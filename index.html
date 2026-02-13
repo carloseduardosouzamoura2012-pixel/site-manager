@@ -2,102 +2,145 @@
 <html>
 <head>
 <meta charset="UTF-8">
-<title>Meu Painel</title>
+<title>Web Studio</title>
 <style>
-body{
-background:#0d1117;
-color:white;
-font-family:Arial;
-text-align:center;
-padding:20px;
-}
-textarea,input{
-width:90%;
-padding:10px;
-margin:8px;
-border-radius:8px;
-border:none;
-}
-button{
-padding:10px 15px;
-border:none;
-border-radius:8px;
-background:#238636;
-color:white;
-font-weight:bold;
-cursor:pointer;
-}
+body{margin:0;font-family:Arial;background:#0d1117;color:white;display:flex;height:100vh;}
+.sidebar{width:250px;background:#161b22;padding:10px;overflow:auto;}
+.main{flex:1;display:flex;flex-direction:column;}
+.topbar{background:#21262d;padding:10px;display:flex;gap:10px;}
+.editor{flex:1;display:flex;}
+textarea{flex:1;background:#0d1117;color:#00ffcc;border:none;padding:10px;}
+iframe{flex:1;border:none;background:white;}
+button{padding:6px 10px;border:none;border-radius:6px;cursor:pointer;}
+.create{background:#238636;color:white;}
+.delete{background:#d73a49;color:white;}
+input{width:100%;margin:5px 0;padding:6px;border-radius:6px;border:none;}
+.repoItem{background:#21262d;padding:6px;margin:5px 0;cursor:pointer;border-radius:6px;}
 </style>
 </head>
 <body>
 
-<h1>🚀 GitHub Site Creator</h1>
+<div class="sidebar">
+<h3>Projetos</h3>
+<input id="token" type="password" placeholder="Token GitHub">
+<input id="novoRepo" placeholder="Novo Projeto">
+<button class="create" onclick="criarRepo()">Criar</button>
+<button onclick="listar()">Atualizar Lista</button>
+<div id="lista"></div>
+</div>
 
-<input id="token" type="password" placeholder="Cole seu token (repo)">
-<input id="repo" placeholder="Nome do repositório">
-<textarea id="conteudo" rows="8" placeholder="HTML do site"></textarea>
+<div class="main">
+<div class="topbar">
+<button class="create" onclick="salvar()">Publicar</button>
+<button onclick="desativar()">Desativar Pages</button>
+<button class="delete" onclick="excluir()">Excluir</button>
+<span id="status"></span>
+</div>
 
-<button onclick="criar()">Criar Site</button>
-
-<p id="status"></p>
+<div class="editor">
+<textarea id="codigo" oninput="preview()"></textarea>
+<iframe id="preview"></iframe>
+</div>
+</div>
 
 <script>
-async function criar(){
+let repoAtual=null;
+let shaAtual=null;
+let usuario=null;
+
+async function getUser(){
 let token=document.getElementById("token").value.trim();
-let repo=document.getElementById("repo").value.trim();
-let conteudo=document.getElementById("conteudo").value;
-let status=document.getElementById("status");
+let r=await fetch("https://api.github.com/user",{headers:{Authorization:"token "+token}});
+let d=await r.json();
+usuario=d.login;
+}
 
-if(!token||!repo) return alert("Preencha tudo");
-
-let user=await fetch("https://api.github.com/user",{
-headers:{Authorization:"token "+token}
+async function listar(){
+let token=document.getElementById("token").value.trim();
+await getUser();
+let r=await fetch("https://api.github.com/user/repos",{headers:{Authorization:"token "+token}});
+let repos=await r.json();
+let lista=document.getElementById("lista");
+lista.innerHTML="";
+repos.forEach(repo=>{
+lista.innerHTML+=`<div class="repoItem" onclick="abrir('${repo.name}')">${repo.name}</div>`;
 });
-let data=await user.json();
-let usuario=data.login;
+}
 
-status.innerHTML="Criando...";
+async function abrir(nome){
+repoAtual=nome;
+let token=document.getElementById("token").value.trim();
+await getUser();
+let r=await fetch(`https://api.github.com/repos/${usuario}/${nome}/contents/index.html`,
+{headers:{Authorization:"token "+token}});
+let d=await r.json();
+shaAtual=d.sha;
+document.getElementById("codigo").value=atob(d.content);
+preview();
+}
 
+async function criarRepo(){
+let nome=document.getElementById("novoRepo").value.trim();
+let token=document.getElementById("token").value.trim();
 await fetch("https://api.github.com/user/repos",{
 method:"POST",
-headers:{
-Authorization:"token "+token,
-Accept:"application/vnd.github+json"
-},
-body:JSON.stringify({name:repo,public:true})
+headers:{Authorization:"token "+token,Accept:"application/vnd.github+json"},
+body:JSON.stringify({name:nome,public:true})
 });
+alert("Projeto criado");
+listar();
+}
 
-await fetch(`https://api.github.com/repos/${usuario}/${repo}/contents/index.html`,{
+async function salvar(){
+if(!repoAtual) return alert("Abra um projeto");
+let token=document.getElementById("token").value.trim();
+let codigo=document.getElementById("codigo").value;
+await getUser();
+await fetch(`https://api.github.com/repos/${usuario}/${repoAtual}/contents/index.html`,{
 method:"PUT",
-headers:{
-Authorization:"token "+token,
-Accept:"application/vnd.github+json"
-},
+headers:{Authorization:"token "+token,Accept:"application/vnd.github+json"},
 body:JSON.stringify({
-message:"Criando site",
-content:btoa(unescape(encodeURIComponent(conteudo)))
+message:"Atualização",
+content:btoa(unescape(encodeURIComponent(codigo))),
+sha:shaAtual
 })
 });
+document.getElementById("status").innerText="Atualizando...";
+setTimeout(()=>{
+document.getElementById("status").innerHTML=
+`Pronto! <a href="https://${usuario}.github.io/${repoAtual}" target="_blank">Abrir</a>`;
+},60000);
+}
 
-await fetch(`https://api.github.com/repos/${usuario}/${repo}/pages`,{
-method:"POST",
-headers:{
-Authorization:"token "+token,
-Accept:"application/vnd.github+json"
-},
-body:JSON.stringify({
-source:{branch:"main",path:"/"}
-})
+async function excluir(){
+if(!repoAtual) return;
+let token=document.getElementById("token").value.trim();
+await getUser();
+if(!confirm("Excluir permanentemente?")) return;
+await fetch(`https://api.github.com/repos/${usuario}/${repoAtual}`,{
+method:"DELETE",
+headers:{Authorization:"token "+token}
 });
+alert("Excluído");
+listar();
+}
 
-status.innerHTML=`✅ Site criado!
-<br>
-<a href="https://${usuario}.github.io/${repo}" target="_blank">
-Abrir Site
-</a>`;
+async function desativar(){
+if(!repoAtual) return;
+let token=document.getElementById("token").value.trim();
+await getUser();
+await fetch(`https://api.github.com/repos/${usuario}/${repoAtual}/pages`,{
+method:"DELETE",
+headers:{Authorization:"token "+token}
+});
+alert("Pages desativado");
+}
+
+function preview(){
+document.getElementById("preview").srcdoc=
+document.getElementById("codigo").value;
 }
 </script>
 
 </body>
 </html>
-
