@@ -1,0 +1,103 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="UTF-8">
+<title>Meu Painel</title>
+<style>
+body{
+background:#0d1117;
+color:white;
+font-family:Arial;
+text-align:center;
+padding:20px;
+}
+textarea,input{
+width:90%;
+padding:10px;
+margin:8px;
+border-radius:8px;
+border:none;
+}
+button{
+padding:10px 15px;
+border:none;
+border-radius:8px;
+background:#238636;
+color:white;
+font-weight:bold;
+cursor:pointer;
+}
+</style>
+</head>
+<body>
+
+<h1>🚀 GitHub Site Creator</h1>
+
+<input id="token" type="password" placeholder="Cole seu token (repo)">
+<input id="repo" placeholder="Nome do repositório">
+<textarea id="conteudo" rows="8" placeholder="HTML do site"></textarea>
+
+<button onclick="criar()">Criar Site</button>
+
+<p id="status"></p>
+
+<script>
+async function criar(){
+let token=document.getElementById("token").value.trim();
+let repo=document.getElementById("repo").value.trim();
+let conteudo=document.getElementById("conteudo").value;
+let status=document.getElementById("status");
+
+if(!token||!repo) return alert("Preencha tudo");
+
+let user=await fetch("https://api.github.com/user",{
+headers:{Authorization:"token "+token}
+});
+let data=await user.json();
+let usuario=data.login;
+
+status.innerHTML="Criando...";
+
+await fetch("https://api.github.com/user/repos",{
+method:"POST",
+headers:{
+Authorization:"token "+token,
+Accept:"application/vnd.github+json"
+},
+body:JSON.stringify({name:repo,public:true})
+});
+
+await fetch(`https://api.github.com/repos/${usuario}/${repo}/contents/index.html`,{
+method:"PUT",
+headers:{
+Authorization:"token "+token,
+Accept:"application/vnd.github+json"
+},
+body:JSON.stringify({
+message:"Criando site",
+content:btoa(unescape(encodeURIComponent(conteudo)))
+})
+});
+
+await fetch(`https://api.github.com/repos/${usuario}/${repo}/pages`,{
+method:"POST",
+headers:{
+Authorization:"token "+token,
+Accept:"application/vnd.github+json"
+},
+body:JSON.stringify({
+source:{branch:"main",path:"/"}
+})
+});
+
+status.innerHTML=`✅ Site criado!
+<br>
+<a href="https://${usuario}.github.io/${repo}" target="_blank">
+Abrir Site
+</a>`;
+}
+</script>
+
+</body>
+</html>
+
