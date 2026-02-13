@@ -3,234 +3,145 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Web Studio Mobile</title>
+<title>Mini Lua UI Engine</title>
 
 <style>
-body{
-margin:0;
-font-family:Arial;
-background:#0d1117;
-color:white;
-}
-
-.topbar{
-display:flex;
-flex-wrap:wrap;
-gap:6px;
-padding:10px;
-background:#161b22;
-position:sticky;
-top:0;
-z-index:10;
-}
-
-button{
-flex:1;
-min-width:90px;
-padding:10px;
-border:none;
-border-radius:8px;
-font-weight:bold;
-cursor:pointer;
-}
-
-.green{background:#238636;color:white;}
-.red{background:#d73a49;color:white;}
-.blue{background:#1f6feb;color:white;}
-.gray{background:#30363d;color:white;}
-
-input{
-width:100%;
-padding:10px;
-margin:5px 0;
-border-radius:8px;
-border:none;
-}
-
-#lista{
-padding:10px;
-max-height:150px;
-overflow:auto;
-background:#161b22;
-}
-
-.repoItem{
-background:#21262d;
-padding:10px;
-margin:5px 0;
-border-radius:8px;
-cursor:pointer;
-}
-
-textarea{
-width:100%;
-height:40vh;
-background:#0d1117;
-color:#00ffcc;
-border:none;
-padding:10px;
-font-family:monospace;
-}
-
-iframe{
-width:100%;
-height:40vh;
-border:none;
-background:white;
-}
-
-#status{
-padding:10px;
-font-weight:bold;
-}
+body{margin:0;display:flex;height:100vh;font-family:Arial;background:#0d1117;color:white;}
+#explorer{width:200px;background:#161b22;padding:10px;overflow:auto;}
+#properties{width:200px;background:#161b22;padding:10px;}
+#canvas{flex:1;background:#222;position:relative;}
+.item{cursor:pointer;padding:5px;background:#21262d;margin:4px 0;border-radius:6px;}
+.gui{position:absolute;padding:5px;border:none;}
+input{width:100%;margin:4px 0;}
+button{width:100%;margin:4px 0;padding:6px;border:none;border-radius:6px;}
 </style>
 </head>
 
 <body>
 
-<div class="topbar">
-<button class="blue" onclick="listar()">Projetos</button>
-<button class="green" onclick="salvar()">Publicar</button>
-<button class="gray" onclick="togglePages()">ON/OFF</button>
-<button class="red" onclick="excluir()">Excluir</button>
+<div id="explorer">
+<h3>Explorer</h3>
+<button onclick="addScreenGui()">+ ScreenGui</button>
+<button onclick="addTextButton()">+ TextButton</button>
+<button onclick="addTextLabel()">+ TextLabel</button>
+<div id="tree"></div>
 </div>
 
-<div style="padding:10px;">
-<input id="token" type="password" placeholder="Token GitHub">
-<input id="novoRepo" placeholder="Novo projeto">
-<button class="green" style="width:100%" onclick="criarRepo()">Criar Projeto</button>
+<div id="canvas"></div>
+
+<div id="properties">
+<h3>Properties</h3>
+<div id="props"></div>
+<h3>Script</h3>
+<textarea id="scriptArea" style="width:100%;height:100px;"></textarea>
+<button onclick="runScript()">Run Script</button>
 </div>
-
-<div id="lista"></div>
-
-<textarea id="codigo" oninput="preview()"></textarea>
-<iframe id="preview"></iframe>
-
-<div id="status"></div>
 
 <script>
-let repoAtual=null;
-let shaAtual=null;
-let usuario=null;
-let pagesAtivo=false;
+let objects=[];
+let selected=null;
+let idCounter=0;
 
-async function getUser(){
-let token=document.getElementById("token").value.trim();
-let r=await fetch("https://api.github.com/user",{headers:{Authorization:"token "+token}});
-let d=await r.json();
-usuario=d.login;
-}
-
-async function listar(){
-let token=document.getElementById("token").value.trim();
-await getUser();
-let r=await fetch("https://api.github.com/user/repos",{headers:{Authorization:"token "+token}});
-let repos=await r.json();
-let lista=document.getElementById("lista");
-lista.innerHTML="";
-repos.forEach(repo=>{
-lista.innerHTML+=`<div class="repoItem" onclick="abrir('${repo.name}')">${repo.name}</div>`;
+function refreshExplorer(){
+let tree=document.getElementById("tree");
+tree.innerHTML="";
+objects.forEach(obj=>{
+tree.innerHTML+=`<div class="item" onclick="selectObj(${obj.id})">${obj.name}</div>`;
 });
 }
 
-async function abrir(nome){
-repoAtual=nome;
-let token=document.getElementById("token").value.trim();
-await getUser();
-let r=await fetch(`https://api.github.com/repos/${usuario}/${nome}/contents/index.html`,
-{headers:{Authorization:"token "+token}});
-let d=await r.json();
-shaAtual=d.sha;
-document.getElementById("codigo").value=atob(d.content);
-preview();
-verificarStatus();
+function selectObj(id){
+selected=objects.find(o=>o.id===id);
+showProperties();
 }
 
-async function criarRepo(){
-let nome=document.getElementById("novoRepo").value.trim();
-let token=document.getElementById("token").value.trim();
-await fetch("https://api.github.com/user/repos",{
-method:"POST",
-headers:{Authorization:"token "+token,Accept:"application/vnd.github+json"},
-body:JSON.stringify({name:nome,public:true})
-});
-document.getElementById("status").innerText="Projeto criado!";
-listar();
+function showProperties(){
+let p=document.getElementById("props");
+if(!selected) return;
+p.innerHTML=`
+Name:<input value="${selected.name}" onchange="selected.name=this.value;refreshExplorer()">
+X:<input value="${selected.x}" onchange="updateProp('x',this.value)">
+Y:<input value="${selected.y}" onchange="updateProp('y',this.value)">
+Width:<input value="${selected.w}" onchange="updateProp('w',this.value)">
+Height:<input value="${selected.h}" onchange="updateProp('h',this.value)">
+Text:<input value="${selected.text}" onchange="updateProp('text',this.value)">
+`;
+document.getElementById("scriptArea").value=selected.script||"";
 }
 
-async function salvar(){
-if(!repoAtual) return alert("Abra um projeto");
-let token=document.getElementById("token").value.trim();
-let codigo=document.getElementById("codigo").value;
-await getUser();
-await fetch(`https://api.github.com/repos/${usuario}/${repoAtual}/contents/index.html`,{
-method:"PUT",
-headers:{Authorization:"token "+token,Accept:"application/vnd.github+json"},
-body:JSON.stringify({
-message:"Atualização",
-content:btoa(unescape(encodeURIComponent(codigo))),
-sha:shaAtual
-})
-});
-document.getElementById("status").innerText="Atualizando (até 1 min)...";
-setTimeout(()=>{
-document.getElementById("status").innerHTML=
-`🟢 Atualizado! <a style="color:#58a6ff" target="_blank"
-href="https://${usuario}.github.io/${repoAtual}">Abrir Site</a>`;
-},60000);
+function updateProp(prop,val){
+selected[prop]=val;
+render();
 }
 
-async function verificarStatus(){
-if(!repoAtual) return;
-let token=document.getElementById("token").value.trim();
-await getUser();
-let r=await fetch(`https://api.github.com/repos/${usuario}/${repoAtual}/pages`,
-{headers:{Authorization:"token "+token}});
-if(r.status===200){
-pagesAtivo=true;
-document.getElementById("status").innerText="🟢 Pages ATIVO";
-}else{
-pagesAtivo=false;
-document.getElementById("status").innerText="🔴 Pages DESATIVADO";
+function render(){
+document.getElementById("canvas").innerHTML="";
+objects.forEach(obj=>{
+let el;
+if(obj.type==="TextButton"){
+el=document.createElement("button");
+el.innerText=obj.text;
 }
+if(obj.type==="TextLabel"){
+el=document.createElement("div");
+el.innerText=obj.text;
+el.style.color="white";
 }
-
-async function togglePages(){
-if(!repoAtual) return alert("Abra um projeto");
-let token=document.getElementById("token").value.trim();
-await getUser();
-
-if(pagesAtivo){
-await fetch(`https://api.github.com/repos/${usuario}/${repoAtual}/pages`,{
-method:"DELETE",
-headers:{Authorization:"token "+token}
-});
-}else{
-await fetch(`https://api.github.com/repos/${usuario}/${repoAtual}/pages`,{
-method:"POST",
-headers:{Authorization:"token "+token,Accept:"application/vnd.github+json"},
-body:JSON.stringify({source:{branch:"main",path:"/"}})
+el.className="gui";
+el.style.left=obj.x+"px";
+el.style.top=obj.y+"px";
+el.style.width=obj.w+"px";
+el.style.height=obj.h+"px";
+document.getElementById("canvas").appendChild(el);
 });
 }
-setTimeout(verificarStatus,1000);
+
+function addScreenGui(){
+alert("ScreenGui criado (simples container)");
 }
 
-async function excluir(){
-if(!repoAtual) return;
-let token=document.getElementById("token").value.trim();
-await getUser();
-if(!confirm("Excluir permanentemente?")) return;
-await fetch(`https://api.github.com/repos/${usuario}/${repoAtual}`,{
-method:"DELETE",
-headers:{Authorization:"token "+token}
+function addTextButton(){
+idCounter++;
+objects.push({
+id:idCounter,
+type:"TextButton",
+name:"TextButton"+idCounter,
+x:50,y:50,w:100,h:40,
+text:"Button",
+script:""
 });
-document.getElementById("status").innerText="Excluído.";
-listar();
+refreshExplorer();
+render();
 }
 
-function preview(){
-document.getElementById("preview").srcdoc=
-document.getElementById("codigo").value;
+function addTextLabel(){
+idCounter++;
+objects.push({
+id:idCounter,
+type:"TextLabel",
+name:"TextLabel"+idCounter,
+x:70,y:120,w:120,h:30,
+text:"Label",
+script:""
+});
+refreshExplorer();
+render();
+}
+
+function runScript(){
+if(!selected) return;
+selected.script=document.getElementById("scriptArea").value;
+
+let lua=selected.script;
+
+lua=lua.replace(/print/g,"console.log");
+lua=lua.replace(/script.Parent/g,"selectedElement");
+
+try{
+eval(lua);
+}catch(e){
+alert("Erro: "+e.message);
+}
 }
 </script>
 
