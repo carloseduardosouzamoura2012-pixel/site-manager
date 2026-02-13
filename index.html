@@ -2,146 +2,155 @@
 <html>
 <head>
 <meta charset="UTF-8">
+<title>GitHub Site Creator</title>
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Mini Lua UI Engine</title>
-
 <style>
-body{margin:0;display:flex;height:100vh;font-family:Arial;background:#0d1117;color:white;}
-#explorer{width:200px;background:#161b22;padding:10px;overflow:auto;}
-#properties{width:200px;background:#161b22;padding:10px;}
-#canvas{flex:1;background:#222;position:relative;}
-.item{cursor:pointer;padding:5px;background:#21262d;margin:4px 0;border-radius:6px;}
-.gui{position:absolute;padding:5px;border:none;}
-input{width:100%;margin:4px 0;}
-button{width:100%;margin:4px 0;padding:6px;border:none;border-radius:6px;}
+body{
+background:#0d1117;
+color:white;
+font-family:Arial;
+text-align:center;
+padding:20px;
+}
+textarea,input{
+width:95%;
+padding:10px;
+margin:8px 0;
+border-radius:8px;
+border:none;
+}
+button{
+padding:10px 15px;
+border:none;
+border-radius:8px;
+background:#238636;
+color:white;
+font-weight:bold;
+cursor:pointer;
+}
+#status{
+margin-top:15px;
+}
 </style>
 </head>
-
 <body>
 
-<div id="explorer">
-<h3>Explorer</h3>
-<button onclick="addScreenGui()">+ ScreenGui</button>
-<button onclick="addTextButton()">+ TextButton</button>
-<button onclick="addTextLabel()">+ TextLabel</button>
-<div id="tree"></div>
-</div>
+<h2>🚀 GitHub Site Creator</h2>
 
-<div id="canvas"></div>
+<input id="token" type="password" placeholder="Cole seu token (repo)">
+<input id="repo" placeholder="Nome do repositório">
+<textarea id="conteudo" rows="8" placeholder="HTML do site"></textarea>
 
-<div id="properties">
-<h3>Properties</h3>
-<div id="props"></div>
-<h3>Script</h3>
-<textarea id="scriptArea" style="width:100%;height:100px;"></textarea>
-<button onclick="runScript()">Run Script</button>
-</div>
+<button onclick="criar()">Criar / Atualizar Site</button>
+
+<p id="status"></p>
 
 <script>
-let objects=[];
-let selected=null;
-let idCounter=0;
+async function criar(){
+let token=document.getElementById("token").value.trim();
+let repo=document.getElementById("repo").value.trim();
+let conteudo=document.getElementById("conteudo").value;
+let status=document.getElementById("status");
 
-function refreshExplorer(){
-let tree=document.getElementById("tree");
-tree.innerHTML="";
-objects.forEach(obj=>{
-tree.innerHTML+=`<div class="item" onclick="selectObj(${obj.id})">${obj.name}</div>`;
-});
+if(!token||!repo||!conteudo){
+alert("Preencha todos os campos");
+return;
 }
 
-function selectObj(id){
-selected=objects.find(o=>o.id===id);
-showProperties();
-}
-
-function showProperties(){
-let p=document.getElementById("props");
-if(!selected) return;
-p.innerHTML=`
-Name:<input value="${selected.name}" onchange="selected.name=this.value;refreshExplorer()">
-X:<input value="${selected.x}" onchange="updateProp('x',this.value)">
-Y:<input value="${selected.y}" onchange="updateProp('y',this.value)">
-Width:<input value="${selected.w}" onchange="updateProp('w',this.value)">
-Height:<input value="${selected.h}" onchange="updateProp('h',this.value)">
-Text:<input value="${selected.text}" onchange="updateProp('text',this.value)">
-`;
-document.getElementById("scriptArea").value=selected.script||"";
-}
-
-function updateProp(prop,val){
-selected[prop]=val;
-render();
-}
-
-function render(){
-document.getElementById("canvas").innerHTML="";
-objects.forEach(obj=>{
-let el;
-if(obj.type==="TextButton"){
-el=document.createElement("button");
-el.innerText=obj.text;
-}
-if(obj.type==="TextLabel"){
-el=document.createElement("div");
-el.innerText=obj.text;
-el.style.color="white";
-}
-el.className="gui";
-el.style.left=obj.x+"px";
-el.style.top=obj.y+"px";
-el.style.width=obj.w+"px";
-el.style.height=obj.h+"px";
-document.getElementById("canvas").appendChild(el);
-});
-}
-
-function addScreenGui(){
-alert("ScreenGui criado (simples container)");
-}
-
-function addTextButton(){
-idCounter++;
-objects.push({
-id:idCounter,
-type:"TextButton",
-name:"TextButton"+idCounter,
-x:50,y:50,w:100,h:40,
-text:"Button",
-script:""
-});
-refreshExplorer();
-render();
-}
-
-function addTextLabel(){
-idCounter++;
-objects.push({
-id:idCounter,
-type:"TextLabel",
-name:"TextLabel"+idCounter,
-x:70,y:120,w:120,h:30,
-text:"Label",
-script:""
-});
-refreshExplorer();
-render();
-}
-
-function runScript(){
-if(!selected) return;
-selected.script=document.getElementById("scriptArea").value;
-
-let lua=selected.script;
-
-lua=lua.replace(/print/g,"console.log");
-lua=lua.replace(/script.Parent/g,"selectedElement");
+status.innerHTML="🔄 Verificando usuário...";
 
 try{
-eval(lua);
-}catch(e){
-alert("Erro: "+e.message);
+
+// pegar usuário
+let userRes=await fetch("https://api.github.com/user",{
+headers:{Authorization:"token "+token}
+});
+
+if(!userRes.ok){
+status.innerHTML="❌ Token inválido";
+return;
 }
+
+let userData=await userRes.json();
+let usuario=userData.login;
+
+// criar repo (se não existir)
+status.innerHTML="📁 Criando repositório...";
+
+await fetch("https://api.github.com/user/repos",{
+method:"POST",
+headers:{
+Authorization:"token "+token,
+Accept:"application/vnd.github+json"
+},
+body:JSON.stringify({
+name:repo,
+private:false
+})
+});
+
+// pegar SHA se já existir index
+let sha=null;
+
+let fileCheck=await fetch(
+`https://api.github.com/repos/${usuario}/${repo}/contents/index.html`,
+{headers:{Authorization:"token "+token}}
+);
+
+if(fileCheck.ok){
+let fileData=await fileCheck.json();
+sha=fileData.sha;
+}
+
+// subir index.html
+status.innerHTML="⬆️ Enviando arquivos...";
+
+await fetch(
+`https://api.github.com/repos/${usuario}/${repo}/contents/index.html`,
+{
+method:"PUT",
+headers:{
+Authorization:"token "+token,
+Accept:"application/vnd.github+json"
+},
+body:JSON.stringify({
+message:"Deploy automático",
+content:btoa(unescape(encodeURIComponent(conteudo))),
+sha:sha
+})
+}
+);
+
+// ativar pages
+status.innerHTML="🌍 Ativando GitHub Pages...";
+
+await fetch(
+`https://api.github.com/repos/${usuario}/${repo}/pages`,
+{
+method:"POST",
+headers:{
+Authorization:"token "+token,
+Accept:"application/vnd.github+json"
+},
+body:JSON.stringify({
+source:{branch:"main",path:"/"}
+})
+}
+);
+
+status.innerHTML=`
+✅ Site publicado!<br><br>
+<a style="color:#58a6ff"
+href="https://${usuario}.github.io/${repo}"
+target="_blank">
+Abrir Site
+</a>
+`;
+
+}catch(e){
+status.innerHTML="❌ Erro: "+e.message;
+}
+
 }
 </script>
 
