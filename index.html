@@ -2,51 +2,117 @@
 <html>
 <head>
 <meta charset="UTF-8">
-<title>Web Studio</title>
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Web Studio Mobile</title>
+
 <style>
-body{margin:0;font-family:Arial;background:#0d1117;color:white;display:flex;height:100vh;}
-.sidebar{width:250px;background:#161b22;padding:10px;overflow:auto;}
-.main{flex:1;display:flex;flex-direction:column;}
-.topbar{background:#21262d;padding:10px;display:flex;gap:10px;}
-.editor{flex:1;display:flex;}
-textarea{flex:1;background:#0d1117;color:#00ffcc;border:none;padding:10px;}
-iframe{flex:1;border:none;background:white;}
-button{padding:6px 10px;border:none;border-radius:6px;cursor:pointer;}
-.create{background:#238636;color:white;}
-.delete{background:#d73a49;color:white;}
-input{width:100%;margin:5px 0;padding:6px;border-radius:6px;border:none;}
-.repoItem{background:#21262d;padding:6px;margin:5px 0;cursor:pointer;border-radius:6px;}
+body{
+margin:0;
+font-family:Arial;
+background:#0d1117;
+color:white;
+}
+
+.topbar{
+display:flex;
+flex-wrap:wrap;
+gap:6px;
+padding:10px;
+background:#161b22;
+position:sticky;
+top:0;
+z-index:10;
+}
+
+button{
+flex:1;
+min-width:90px;
+padding:10px;
+border:none;
+border-radius:8px;
+font-weight:bold;
+cursor:pointer;
+}
+
+.green{background:#238636;color:white;}
+.red{background:#d73a49;color:white;}
+.blue{background:#1f6feb;color:white;}
+.gray{background:#30363d;color:white;}
+
+input{
+width:100%;
+padding:10px;
+margin:5px 0;
+border-radius:8px;
+border:none;
+}
+
+#lista{
+padding:10px;
+max-height:150px;
+overflow:auto;
+background:#161b22;
+}
+
+.repoItem{
+background:#21262d;
+padding:10px;
+margin:5px 0;
+border-radius:8px;
+cursor:pointer;
+}
+
+textarea{
+width:100%;
+height:40vh;
+background:#0d1117;
+color:#00ffcc;
+border:none;
+padding:10px;
+font-family:monospace;
+}
+
+iframe{
+width:100%;
+height:40vh;
+border:none;
+background:white;
+}
+
+#status{
+padding:10px;
+font-weight:bold;
+}
 </style>
 </head>
+
 <body>
 
-<div class="sidebar">
-<h3>Projetos</h3>
-<input id="token" type="password" placeholder="Token GitHub">
-<input id="novoRepo" placeholder="Novo Projeto">
-<button class="create" onclick="criarRepo()">Criar</button>
-<button onclick="listar()">Atualizar Lista</button>
-<div id="lista"></div>
-</div>
-
-<div class="main">
 <div class="topbar">
-<button class="create" onclick="salvar()">Publicar</button>
-<button onclick="desativar()">Desativar Pages</button>
-<button class="delete" onclick="excluir()">Excluir</button>
-<span id="status"></span>
+<button class="blue" onclick="listar()">Projetos</button>
+<button class="green" onclick="salvar()">Publicar</button>
+<button class="gray" onclick="togglePages()">ON/OFF</button>
+<button class="red" onclick="excluir()">Excluir</button>
 </div>
 
-<div class="editor">
+<div style="padding:10px;">
+<input id="token" type="password" placeholder="Token GitHub">
+<input id="novoRepo" placeholder="Novo projeto">
+<button class="green" style="width:100%" onclick="criarRepo()">Criar Projeto</button>
+</div>
+
+<div id="lista"></div>
+
 <textarea id="codigo" oninput="preview()"></textarea>
 <iframe id="preview"></iframe>
-</div>
-</div>
+
+<div id="status"></div>
 
 <script>
 let repoAtual=null;
 let shaAtual=null;
 let usuario=null;
+let pagesAtivo=false;
 
 async function getUser(){
 let token=document.getElementById("token").value.trim();
@@ -77,6 +143,7 @@ let d=await r.json();
 shaAtual=d.sha;
 document.getElementById("codigo").value=atob(d.content);
 preview();
+verificarStatus();
 }
 
 async function criarRepo(){
@@ -87,7 +154,7 @@ method:"POST",
 headers:{Authorization:"token "+token,Accept:"application/vnd.github+json"},
 body:JSON.stringify({name:nome,public:true})
 });
-alert("Projeto criado");
+document.getElementById("status").innerText="Projeto criado!";
 listar();
 }
 
@@ -105,11 +172,47 @@ content:btoa(unescape(encodeURIComponent(codigo))),
 sha:shaAtual
 })
 });
-document.getElementById("status").innerText="Atualizando...";
+document.getElementById("status").innerText="Atualizando (até 1 min)...";
 setTimeout(()=>{
 document.getElementById("status").innerHTML=
-`Pronto! <a href="https://${usuario}.github.io/${repoAtual}" target="_blank">Abrir</a>`;
+`🟢 Atualizado! <a style="color:#58a6ff" target="_blank"
+href="https://${usuario}.github.io/${repoAtual}">Abrir Site</a>`;
 },60000);
+}
+
+async function verificarStatus(){
+if(!repoAtual) return;
+let token=document.getElementById("token").value.trim();
+await getUser();
+let r=await fetch(`https://api.github.com/repos/${usuario}/${repoAtual}/pages`,
+{headers:{Authorization:"token "+token}});
+if(r.status===200){
+pagesAtivo=true;
+document.getElementById("status").innerText="🟢 Pages ATIVO";
+}else{
+pagesAtivo=false;
+document.getElementById("status").innerText="🔴 Pages DESATIVADO";
+}
+}
+
+async function togglePages(){
+if(!repoAtual) return alert("Abra um projeto");
+let token=document.getElementById("token").value.trim();
+await getUser();
+
+if(pagesAtivo){
+await fetch(`https://api.github.com/repos/${usuario}/${repoAtual}/pages`,{
+method:"DELETE",
+headers:{Authorization:"token "+token}
+});
+}else{
+await fetch(`https://api.github.com/repos/${usuario}/${repoAtual}/pages`,{
+method:"POST",
+headers:{Authorization:"token "+token,Accept:"application/vnd.github+json"},
+body:JSON.stringify({source:{branch:"main",path:"/"}})
+});
+}
+setTimeout(verificarStatus,1000);
 }
 
 async function excluir(){
@@ -121,19 +224,8 @@ await fetch(`https://api.github.com/repos/${usuario}/${repoAtual}`,{
 method:"DELETE",
 headers:{Authorization:"token "+token}
 });
-alert("Excluído");
+document.getElementById("status").innerText="Excluído.";
 listar();
-}
-
-async function desativar(){
-if(!repoAtual) return;
-let token=document.getElementById("token").value.trim();
-await getUser();
-await fetch(`https://api.github.com/repos/${usuario}/${repoAtual}/pages`,{
-method:"DELETE",
-headers:{Authorization:"token "+token}
-});
-alert("Pages desativado");
 }
 
 function preview(){
