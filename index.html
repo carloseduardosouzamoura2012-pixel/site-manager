@@ -4,254 +4,238 @@
 <meta charset="UTF-8">
 <title>Bluber Engine 2D</title>
 <style>
-body{margin:0;background:#111;font-family:Arial;color:white;overflow:hidden;}
-.window{position:absolute;background:#1c1c1c;border:1px solid #333;border-radius:8px;display:flex;flex-direction:column;resize:both;overflow:hidden;}
-.header{background:#2a2a2a;padding:6px;cursor:move;font-weight:bold;}
-.content{flex:1;overflow:auto;padding:8px;}
-#viewport{top:10px;left:10px;width:60%;height:65%;}
-#explorer{top:10px;right:10px;width:35%;height:30%;}
-#inspector{top:42%;right:10px;width:35%;height:45%;}
-#toolbar{bottom:10px;left:10px;width:60%;height:20%;}
-canvas{background:#222;width:100%;height:100%;}
-input,textarea,select,button{width:100%;margin-top:5px;background:#2a2a2a;color:white;border:1px solid #444;padding:5px;border-radius:5px;}
-.list{background:#222;padding:4px;margin-top:4px;cursor:pointer;border-radius:4px;}
-.selected{background:#0066ff;}
-#joystick{
-position:absolute;
-bottom:40px;
-left:40px;
-width:100px;
-height:100px;
-background:rgba(255,255,255,0.1);
-border-radius:50%;
-display:none;
-}
+body{margin:0;font-family:Arial;background:#1e1e1e;color:white;overflow:hidden}
+#topbar{height:40px;background:#111;display:flex;align-items:center;padding:5px;gap:10px}
+#workspace{position:absolute;left:250px;right:250px;top:40px;bottom:0;background:#222}
+#explorer{position:absolute;left:0;top:40px;bottom:0;width:250px;background:#181818;overflow:auto;padding:10px}
+#properties{position:absolute;right:0;top:40px;bottom:0;width:250px;background:#181818;overflow:auto;padding:10px}
+button{background:#444;border:none;color:white;padding:5px;cursor:pointer}
+input,textarea,select{width:100%;margin-bottom:5px;background:#333;color:white;border:none;padding:4px}
+canvas{background:#111}
+.joystick{
+position:absolute;width:100px;height:100px;border-radius:50%;
+background:rgba(255,255,255,0.1);bottom:20px;left:20px;display:none}
+.knob{
+position:absolute;width:50px;height:50px;border-radius:50%;
+background:rgba(255,255,255,0.5);top:25px;left:25px}
+.ui-element{position:absolute}
 </style>
 </head>
 <body>
 
-<div class="window" id="viewport">
-<div class="header">Viewport</div>
-<canvas id="game"></canvas>
+<div id="topbar">
+<button onclick="addBlock()">Add Block</button>
+<button onclick="addUI('button')">Add Button UI</button>
+<button onclick="addUI('text')">Add Text UI</button>
+<button onclick="togglePlay()">Play</button>
 </div>
 
-<div class="window" id="explorer">
-<div class="header">Explorer</div>
-<div class="content" id="objectList"></div>
-</div>
+<div id="explorer"><h3>Explorer</h3><div id="explorerList"></div></div>
+<div id="properties"><h3>Properties</h3><div id="props"></div></div>
+<div id="workspace"><canvas id="game"></canvas></div>
 
-<div class="window" id="inspector">
-<div class="header">Inspector</div>
-<div class="content">
-<label>X</label><input id="propX">
-<label>Y</label><input id="propY">
-<label>Width</label><input id="propW">
-<label>Height</label><input id="propH">
-<label>Cor</label><input type="color" id="propColor">
-<label>Tipo</label>
-<select id="propType">
-<option value="normal">Normal</option>
-<option value="monster">Monstro</option>
-<option value="ui">UI</option>
-</select>
-<label>Script (JS)</label>
-<textarea id="propScript" placeholder="// onStart()\n// onUpdate()"></textarea>
-<button onclick="applyChanges()">Aplicar</button>
+<div class="joystick" id="joy">
+<div class="knob" id="knob"></div>
 </div>
-</div>
-
-<div class="window" id="toolbar">
-<div class="header">Bluber Engine 2D</div>
-<div class="content">
-<button onclick="addBlock()">Adicionar Bloco</button>
-<button onclick="addUI()">Adicionar UI</button>
-<button onclick="toggleMode()">Play / Edit</button>
-</div>
-</div>
-
-<div id="joystick"></div>
 
 <script>
-/* DRAG WINDOWS */
-document.querySelectorAll(".window").forEach(win=>{
-let header=win.querySelector(".header");
-let ox,oy,drag=false;
-header.onmousedown=e=>{drag=true;ox=e.clientX-win.offsetLeft;oy=e.clientY-win.offsetTop;}
-document.onmouseup=()=>drag=false;
-document.onmousemove=e=>{if(drag){win.style.left=e.clientX-ox+"px";win.style.top=e.clientY-oy+"px";}}
-});
-
-/* ENGINE CORE */
-const canvas=document.getElementById("game");
-const ctx=canvas.getContext("2d");
-canvas.width=800;
-canvas.height=500;
-
-let mode="edit";
-let objects=[];
-let runtimeObjects=[];
+let canvas=document.getElementById("game");
+let ctx=canvas.getContext("2d");
+let blocks=[];
+let uiElements=[];
 let selected=null;
+let playMode=false;
+let playerStart={x:100,y:100};
+let player=null;
+canvas.width=window.innerWidth-500;
+canvas.height=window.innerHeight-40;
 
-let player={x:0,y:0,w:40,h:40,vy:0,startX:0,startY:0,speed:4};
-
-/* OBJECT SYSTEM */
 function addBlock(){
-let obj={
-id:Date.now(),
-name:"Object "+objects.length,
-x:100,y:100,w:100,h:60,
-color:"#ffffff",
-type:"normal",
-script:""
-};
-objects.push(obj);
-if(objects.length===1){
-player.startX=obj.x;
-player.startY=obj.y-40;
-}
-refreshExplorer();
+blocks.push({
+name:"Block"+blocks.length,
+x:100,y:100,w:80,h:80,
+color:"white",
+image:null,
+script:"",
+isMonster:false,
+isPlayer:false
+});
+updateExplorer();
 }
 
-function addUI(){
-let obj={
-id:Date.now(),
-name:"UI "+objects.length,
-x:200,y:50,w:150,h:40,
-color:"#00aaff",
-type:"ui",
+function addUI(type){
+let el={
+name:type+uiElements.length,
+type:type,
+x:200,y:200,
+text:"UI",
 script:""
 };
-objects.push(obj);
-refreshExplorer();
+uiElements.push(el);
+updateExplorer();
+renderUI();
 }
 
-/* EXPLORER */
-function refreshExplorer(){
-let list=document.getElementById("objectList");
+function updateExplorer(){
+let list=document.getElementById("explorerList");
 list.innerHTML="";
-objects.forEach(o=>{
+blocks.forEach(b=>{
 let div=document.createElement("div");
-div.className="list"+(selected===o?" selected":"");
-div.innerText=o.name;
-div.onclick=()=>{selected=o;updateInspector();refreshExplorer();}
+div.innerText=b.name;
+div.onclick=()=>select(b);
+list.appendChild(div);
+});
+uiElements.forEach(u=>{
+let div=document.createElement("div");
+div.innerText=u.name+" (UI)";
+div.onclick=()=>select(u);
 list.appendChild(div);
 });
 }
 
-/* INSPECTOR */
-function updateInspector(){
-if(!selected)return;
-propX.value=selected.x;
-propY.value=selected.y;
-propW.value=selected.w;
-propH.value=selected.h;
-propColor.value=selected.color;
-propType.value=selected.type;
-propScript.value=selected.script;
+function select(obj){
+selected=obj;
+showProperties();
 }
 
-function applyChanges(){
+function showProperties(){
+let p=document.getElementById("props");
+p.innerHTML="";
 if(!selected)return;
-selected.x=parseInt(propX.value);
-selected.y=parseInt(propY.value);
-selected.w=parseInt(propW.value);
-selected.h=parseInt(propH.value);
-selected.color=propColor.value;
-selected.type=propType.value;
-selected.script=propScript.value;
+
+for(let key in selected){
+if(key=="image")continue;
+let input=document.createElement("input");
+input.value=selected[key];
+input.onchange=()=>selected[key]=input.value;
+p.appendChild(document.createTextNode(key));
+p.appendChild(input);
+}
+let apply=document.createElement("button");
+apply.innerText="Aplicar";
+apply.onclick=()=>renderUI();
+p.appendChild(apply);
 }
 
-/* PLAY MODE */
-function toggleMode(){
-if(mode==="edit"){
-mode="play";
-runtimeObjects=JSON.parse(JSON.stringify(objects));
-player.x=player.startX;
-player.y=player.startY;
-document.getElementById("joystick").style.display="block";
+canvas.onmousedown=e=>{
+if(playMode)return;
+let mx=e.offsetX,my=e.offsetY;
+blocks.forEach(b=>{
+if(mx>b.x&&mx<b.x+b.w&&my>b.y&&my<b.y+b.h){
+selected=b;
+select(b);
+canvas.onmousemove=ev=>{
+b.x=ev.offsetX-b.w/2;
+b.y=ev.offsetY-b.h/2;
+};
+}
+});
+};
+canvas.onmouseup=()=>canvas.onmousemove=null;
+
+function togglePlay(){
+playMode=!playMode;
+document.getElementById("joy").style.display=playMode?"block":"none";
+if(playMode){
+player=blocks.find(b=>b.isPlayer);
+if(player){
+playerStart.x=player.x;
+playerStart.y=player.y;
+}
+}
+}
+
+function gameLoop(){
+ctx.clearRect(0,0,canvas.width,canvas.height);
+
+blocks.forEach(b=>{
+if(b.image){
+let img=new Image();
+img.src=b.image;
+ctx.drawImage(img,b.x,b.y,b.w,b.h);
 }else{
-mode="edit";
-document.getElementById("joystick").style.display="none";
+ctx.fillStyle=b.color;
+ctx.fillRect(b.x,b.y,b.w,b.h);
 }
+});
+
+if(playMode){
+blocks.forEach(b=>{
+if(b.script){
+try{eval(b.script)}catch{}
+}
+if(b.isMonster&&player){
+let dx=player.x-b.x;
+let dy=player.y-b.y;
+b.x+=dx*0.02;
+b.y+=dy*0.02;
+if(collide(b,player)){
+player.x=playerStart.x;
+player.y=playerStart.y;
+}
+}
+});
+}
+requestAnimationFrame(gameLoop);
+}
+gameLoop();
+
+function collide(a,b){
+return a.x<a.x+a.w&&
+a.x+a.w>b.x&&
+a.y<b.y+b.h&&
+a.y+a.h>b.y;
 }
 
 /* JOYSTICK */
-let joy=document.getElementById("joystick");
-let joyActive=false,joyX=0;
-joy.ontouchstart=e=>{joyActive=true;}
-joy.ontouchmove=e=>{
-let touch=e.touches[0];
-joyX=(touch.clientX-joy.offsetLeft-50)/50;
-}
-joy.ontouchend=()=>{joyActive=false;joyX=0;}
+let joy=document.getElementById("joy");
+let knob=document.getElementById("knob");
+let joyData={x:0,y:0};
 
-/* GAME LOOP */
-function update(){
-if(mode==="play"){
-player.vy+=0.5;
-player.y+=player.vy;
+joy.onpointermove=e=>{
+if(!playMode)return;
+let rect=joy.getBoundingClientRect();
+let x=e.clientX-rect.left-50;
+let y=e.clientY-rect.top-50;
+let max=25;
+x=Math.max(-max,Math.min(max,x));
+y=Math.max(-max,Math.min(max,y));
+knob.style.left=(x+25)+"px";
+knob.style.top=(y+25)+"px";
+joyData.x=x/25;
+joyData.y=y/25;
+if(player){
+player.x+=joyData.x*5;
+player.y+=joyData.y*5;
+}
+};
 
-if(joyActive){
-player.x+=joyX*player.speed;
-}
+joy.onpointerup=()=>{
+knob.style.left="25px";
+knob.style.top="25px";
+joyData.x=0;joyData.y=0;
+};
 
-runtimeObjects.forEach(o=>{
-// chão
-if(o.type==="normal"){
-if(player.x<o.x+o.w &&
-player.x+player.w>o.x &&
-player.y<o.y+o.h &&
-player.y+player.h>o.y){
-player.y=o.y-player.h;
-player.vy=0;
+function renderUI(){
+document.querySelectorAll(".ui-element").forEach(e=>e.remove());
+uiElements.forEach(u=>{
+let el;
+if(u.type=="button"){
+el=document.createElement("button");
+el.innerText=u.text;
 }
+if(u.type=="text"){
+el=document.createElement("div");
+el.innerText=u.text;
 }
-// monstro
-if(o.type==="monster"){
-let dx=player.x-o.x;
-let dy=player.y-o.y;
-let d=Math.sqrt(dx*dx+dy*dy);
-o.x+=dx/d*1.2;
-o.y+=dy/d*1.2;
-if(player.x<o.x+o.w &&
-player.x+player.w>o.x &&
-player.y<o.y+o.h &&
-player.y+player.h>o.y){
-player.x=player.startX;
-player.y=player.startY;
-}
-}
-
-// SCRIPT EXECUTION
-if(o.script){
-try{
-let onStart=()=>{};
-let onUpdate=()=>{};
-eval(o.script);
-onUpdate();
-}catch(e){}
-}
+el.className="ui-element";
+el.style.left=u.x+"px";
+el.style.top=u.y+"px";
+el.onclick=()=>{ if(u.script) eval(u.script); };
+document.body.appendChild(el);
 });
 }
-
-draw();
-requestAnimationFrame(update);
-}
-
-/* DRAW */
-function draw(){
-ctx.clearRect(0,0,canvas.width,canvas.height);
-let list=mode==="play"?runtimeObjects:objects;
-list.forEach(o=>{
-ctx.fillStyle=o.color;
-ctx.fillRect(o.x,o.y,o.w,o.h);
-});
-ctx.fillStyle="lime";
-ctx.fillRect(player.x,player.y,player.w,player.h);
-}
-
-update();
-refreshExplorer();
 </script>
+
 </body>
 </html>
