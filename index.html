@@ -2,35 +2,106 @@
 <html>
 <head>
 <meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
 <title>Bluber Engine 2D</title>
+
 <style>
-body{margin:0;font-family:Arial;background:#1e1e1e;color:white;overflow:hidden}
-#topbar{height:40px;background:#111;display:flex;align-items:center;padding:5px;gap:10px}
-#workspace{position:absolute;left:250px;right:250px;top:40px;bottom:0;background:#222}
-#explorer{position:absolute;left:0;top:40px;bottom:0;width:250px;background:#181818;overflow:auto;padding:10px}
-#properties{position:absolute;right:0;top:40px;bottom:0;width:250px;background:#181818;overflow:auto;padding:10px}
-button{background:#444;border:none;color:white;padding:5px;cursor:pointer}
-input,textarea,select{width:100%;margin-bottom:5px;background:#333;color:white;border:none;padding:4px}
-canvas{background:#111}
+body{
+margin:0;
+background:#1e1e1e;
+font-family:Arial;
+overflow:hidden;
+touch-action:none;
+color:white;
+}
+
+#topbar{
+height:50px;
+background:#111;
+display:flex;
+align-items:center;
+gap:10px;
+padding:5px;
+}
+
+button{
+background:#3a3a3a;
+border:none;
+border-radius:12px;
+padding:10px;
+font-size:14px;
+color:white;
+}
+
+#explorer{
+position:absolute;
+left:0;
+top:50px;
+bottom:0;
+width:200px;
+background:#181818;
+overflow:auto;
+padding:10px;
+}
+
+#properties{
+position:absolute;
+right:0;
+top:50px;
+bottom:0;
+width:220px;
+background:#181818;
+overflow:auto;
+padding:10px;
+}
+
+#workspace{
+position:absolute;
+left:200px;
+right:220px;
+top:50px;
+bottom:0;
+background:#222;
+}
+
+canvas{
+background:#111;
+}
+
 .joystick{
-position:absolute;width:100px;height:100px;border-radius:50%;
-background:rgba(255,255,255,0.1);bottom:20px;left:20px;display:none}
+position:absolute;
+width:120px;
+height:120px;
+border-radius:50%;
+background:rgba(255,255,255,0.1);
+bottom:30px;
+left:30px;
+display:none;
+}
+
 .knob{
-position:absolute;width:50px;height:50px;border-radius:50%;
-background:rgba(255,255,255,0.5);top:25px;left:25px}
-.ui-element{position:absolute}
+position:absolute;
+width:60px;
+height:60px;
+border-radius:50%;
+background:rgba(255,255,255,0.6);
+top:30px;
+left:30px;
+}
 </style>
 </head>
+
 <body>
 
 <div id="topbar">
 <button onclick="addBlock()">Add Block</button>
-<button onclick="addUI('button')">Add Button UI</button>
-<button onclick="addUI('text')">Add Text UI</button>
+<button onclick="addUI()">Add UI</button>
 <button onclick="togglePlay()">Play</button>
+<button onclick="exportProject()">Export</button>
+<button onclick="importProject()">Import</button>
 </div>
 
-<div id="explorer"><h3>Explorer</h3><div id="explorerList"></div></div>
+<div id="explorer"><h3>Explorer</h3><div id="list"></div></div>
 <div id="properties"><h3>Properties</h3><div id="props"></div></div>
 <div id="workspace"><canvas id="game"></canvas></div>
 
@@ -39,56 +110,56 @@ background:rgba(255,255,255,0.5);top:25px;left:25px}
 </div>
 
 <script>
+
 let canvas=document.getElementById("game");
 let ctx=canvas.getContext("2d");
+
+canvas.width=window.innerWidth-420;
+canvas.height=window.innerHeight-50;
+
 let blocks=[];
 let uiElements=[];
 let selected=null;
 let playMode=false;
-let playerStart={x:100,y:100};
 let player=null;
-canvas.width=window.innerWidth-500;
-canvas.height=window.innerHeight-40;
+let startPos={x:100,y:100};
 
 function addBlock(){
 blocks.push({
 name:"Block"+blocks.length,
 x:100,y:100,w:80,h:80,
-color:"white",
+color:"#ffffff",
 image:null,
 script:"",
-isMonster:false,
-isPlayer:false
+type:"normal"
 });
 updateExplorer();
 }
 
-function addUI(type){
-let el={
-name:type+uiElements.length,
-type:type,
-x:200,y:200,
-text:"UI",
-script:""
-};
-uiElements.push(el);
+function addUI(){
+uiElements.push({
+name:"UI"+uiElements.length,
+x:150,y:150,
+text:"Botão",
+script:"alert('clicou')"
+});
 updateExplorer();
 renderUI();
 }
 
 function updateExplorer(){
-let list=document.getElementById("explorerList");
+let list=document.getElementById("list");
 list.innerHTML="";
-blocks.forEach(b=>{
+blocks.forEach(obj=>{
 let div=document.createElement("div");
-div.innerText=b.name;
-div.onclick=()=>select(b);
+div.innerText=obj.name;
+div.onclick=()=>select(obj);
 list.appendChild(div);
 });
-uiElements.forEach(u=>{
+uiElements.forEach(obj=>{
 let div=document.createElement("div");
-div.innerText=u.name+" (UI)";
-div.onclick=()=>select(u);
+div.innerText=obj.name+" (UI)";
+div.onclick=()=>select(obj);
 list.appendChild(div);
 });
 }
@@ -103,49 +174,99 @@ let p=document.getElementById("props");
 p.innerHTML="";
 if(!selected)return;
 
-for(let key in selected){
-if(key=="image")continue;
+createRange("X",selected.x,v=>selected.x=Number(v));
+createRange("Y",selected.y,v=>selected.y=Number(v));
+
+if(selected.w!==undefined){
+createRange("Width",selected.w,v=>selected.w=Number(v));
+createRange("Height",selected.h,v=>selected.h=Number(v));
+
+let color=document.createElement("input");
+color.type="color";
+color.value=selected.color;
+color.oninput=()=>selected.color=color.value;
+p.appendChild(document.createTextNode("Color"));
+p.appendChild(color);
+
+let type=document.createElement("select");
+type.innerHTML="<option value='normal'>Normal</option><option value='player'>Player</option><option value='monster'>Monster</option>";
+type.value=selected.type;
+type.onchange=()=>selected.type=type.value;
+p.appendChild(document.createTextNode("Type"));
+p.appendChild(type);
+
+let imgBtn=document.createElement("button");
+imgBtn.innerText="Import Image";
+imgBtn.onclick=()=>{
 let input=document.createElement("input");
-input.value=selected[key];
-input.onchange=()=>selected[key]=input.value;
-p.appendChild(document.createTextNode(key));
-p.appendChild(input);
-}
-let apply=document.createElement("button");
-apply.innerText="Aplicar";
-apply.onclick=()=>renderUI();
-p.appendChild(apply);
+input.type="file";
+input.accept="image/*";
+input.onchange=e=>{
+let reader=new FileReader();
+reader.onload=ev=>selected.image=ev.target.result;
+reader.readAsDataURL(e.target.files[0]);
+};
+input.click();
+};
+p.appendChild(imgBtn);
 }
 
-canvas.onmousedown=e=>{
+let area=document.createElement("textarea");
+area.placeholder="Script JS";
+area.value=selected.script||"";
+area.oninput=()=>selected.script=area.value;
+p.appendChild(area);
+}
+
+function createRange(label,value,callback){
+let p=document.getElementById("props");
+p.appendChild(document.createTextNode(label));
+let input=document.createElement("input");
+input.type="range";
+input.min=0;
+input.max=1000;
+input.value=value;
+input.oninput=()=>callback(input.value);
+p.appendChild(input);
+}
+
+canvas.onpointerdown=e=>{
 if(playMode)return;
 let mx=e.offsetX,my=e.offsetY;
 blocks.forEach(b=>{
 if(mx>b.x&&mx<b.x+b.w&&my>b.y&&my<b.y+b.h){
 selected=b;
 select(b);
-canvas.onmousemove=ev=>{
+canvas.onpointermove=ev=>{
 b.x=ev.offsetX-b.w/2;
 b.y=ev.offsetY-b.h/2;
 };
 }
 });
 };
-canvas.onmouseup=()=>canvas.onmousemove=null;
+
+canvas.onpointerup=()=>canvas.onpointermove=null;
 
 function togglePlay(){
 playMode=!playMode;
 document.getElementById("joy").style.display=playMode?"block":"none";
 if(playMode){
-player=blocks.find(b=>b.isPlayer);
+player=blocks.find(b=>b.type=="player");
 if(player){
-playerStart.x=player.x;
-playerStart.y=player.y;
+startPos.x=player.x;
+startPos.y=player.y;
 }
 }
 }
 
-function gameLoop(){
+function collide(a,b){
+return a.x<b.x+b.w&&
+a.x+a.w>b.x&&
+a.y<b.y+b.h&&
+a.y+a.h>b.y;
+}
+
+function loop(){
 ctx.clearRect(0,0,canvas.width,canvas.height);
 
 blocks.forEach(b=>{
@@ -162,80 +283,91 @@ ctx.fillRect(b.x,b.y,b.w,b.h);
 if(playMode){
 blocks.forEach(b=>{
 if(b.script){
-try{eval(b.script)}catch{}
+try{new Function("self","player",b.script)(b,player)}catch{}
 }
-if(b.isMonster&&player){
+if(b.type=="monster"&&player){
 let dx=player.x-b.x;
 let dy=player.y-b.y;
 b.x+=dx*0.02;
 b.y+=dy*0.02;
 if(collide(b,player)){
-player.x=playerStart.x;
-player.y=playerStart.y;
+player.x=startPos.x;
+player.y=startPos.y;
 }
 }
 });
 }
-requestAnimationFrame(gameLoop);
-}
-gameLoop();
 
-function collide(a,b){
-return a.x<a.x+a.w&&
-a.x+a.w>b.x&&
-a.y<b.y+b.h&&
-a.y+a.h>b.y;
+requestAnimationFrame(loop);
 }
+loop();
 
 /* JOYSTICK */
 let joy=document.getElementById("joy");
 let knob=document.getElementById("knob");
-let joyData={x:0,y:0};
 
 joy.onpointermove=e=>{
-if(!playMode)return;
+if(!playMode||!player)return;
 let rect=joy.getBoundingClientRect();
-let x=e.clientX-rect.left-50;
-let y=e.clientY-rect.top-50;
-let max=25;
+let x=e.clientX-rect.left-60;
+let y=e.clientY-rect.top-60;
+let max=30;
 x=Math.max(-max,Math.min(max,x));
 y=Math.max(-max,Math.min(max,y));
-knob.style.left=(x+25)+"px";
-knob.style.top=(y+25)+"px";
-joyData.x=x/25;
-joyData.y=y/25;
-if(player){
-player.x+=joyData.x*5;
-player.y+=joyData.y*5;
-}
+knob.style.left=(x+30)+"px";
+knob.style.top=(y+30)+"px";
+player.x+=x*0.1;
+player.y+=y*0.1;
 };
 
 joy.onpointerup=()=>{
-knob.style.left="25px";
-knob.style.top="25px";
-joyData.x=0;joyData.y=0;
+knob.style.left="30px";
+knob.style.top="30px";
 };
 
+/* UI RENDER */
 function renderUI(){
-document.querySelectorAll(".ui-element").forEach(e=>e.remove());
+document.querySelectorAll(".gameUI").forEach(e=>e.remove());
 uiElements.forEach(u=>{
-let el;
-if(u.type=="button"){
-el=document.createElement("button");
-el.innerText=u.text;
-}
-if(u.type=="text"){
-el=document.createElement("div");
-el.innerText=u.text;
-}
-el.className="ui-element";
-el.style.left=u.x+"px";
-el.style.top=u.y+"px";
-el.onclick=()=>{ if(u.script) eval(u.script); };
-document.body.appendChild(el);
+let btn=document.createElement("button");
+btn.className="gameUI";
+btn.innerText=u.text;
+btn.style.position="absolute";
+btn.style.left=u.x+"px";
+btn.style.top=u.y+"px";
+btn.onclick=()=>{ if(u.script) new Function(u.script)(); };
+document.body.appendChild(btn);
 });
 }
-</script>
 
+/* EXPORT / IMPORT */
+function exportProject(){
+let data={blocks,uiElements};
+let blob=new Blob([JSON.stringify(data)],{type:"application/json"});
+let a=document.createElement("a");
+a.href=URL.createObjectURL(blob);
+a.download="BluberProject.json";
+a.click();
+}
+
+function importProject(){
+let input=document.createElement("input");
+input.type="file";
+input.accept=".json";
+input.onchange=e=>{
+let reader=new FileReader();
+reader.onload=ev=>{
+let data=JSON.parse(ev.target.result);
+blocks=data.blocks||[];
+uiElements=data.uiElements||[];
+updateExplorer();
+renderUI();
+};
+reader.readAsText(e.target.files[0]);
+};
+input.click();
+}
+
+</script>
 </body>
 </html>
