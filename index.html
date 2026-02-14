@@ -2,97 +2,202 @@
 <html>
 <head>
 <meta charset="UTF-8">
-<title>Ultra 2D Engine</title>
+<title>Bluber Engine 2D</title>
 <style>
-body{margin:0;overflow:hidden;background:#111;font-family:Arial;}
-canvas{background:#222;display:block;}
-#ui{
-position:fixed;
-top:10px;
-left:10px;
-background:#000c;
-padding:10px;
-border-radius:10px;
+body{
+margin:0;
+background:#0f0f0f;
+font-family:Segoe UI,Arial;
+overflow:hidden;
 color:white;
-width:250px;
 }
-button,input{margin:5px;width:100%;}
-textarea{width:100%;height:80px;}
+
+/* JANELAS */
+.window{
+position:absolute;
+background:#1c1c1c;
+border:1px solid #333;
+border-radius:8px;
+display:flex;
+flex-direction:column;
+resize:both;
+overflow:hidden;
+}
+
+.header{
+background:#2a2a2a;
+padding:6px;
+cursor:move;
+font-weight:bold;
+font-size:14px;
+}
+
+.content{
+flex:1;
+overflow:auto;
+padding:8px;
+}
+
+/* Layout */
+#viewport{top:10px;left:10px;width:60%;height:70%;}
+#hierarchy{top:10px;right:10px;width:35%;height:30%;}
+#inspector{top:42%;right:10px;width:35%;height:38%;}
+#assets{bottom:10px;left:10px;width:60%;height:25%;}
+
+/* UI */
+button,input,textarea{
+width:100%;
+margin-top:5px;
+background:#2a2a2a;
+border:1px solid #444;
+color:white;
+padding:6px;
+border-radius:5px;
+}
+
+button:hover{background:#3a3a3a;}
+
+canvas{background:#222;width:100%;height:100%;}
+.list-item{
+padding:4px;
+background:#2a2a2a;
+margin-top:3px;
+cursor:pointer;
+border-radius:4px;
+}
+.list-item:hover{background:#3a3a3a;}
+.selected{background:#0066ff;}
 </style>
 </head>
 <body>
 
-<div id="ui">
-<button onclick="addBlock()">Adicionar Bloco</button>
-<button onclick="addScript()">Adicionar Script</button>
-<input type="file" id="imgLoader">
-<button onclick="exportProject()">Exportar Projeto</button>
-<button onclick="importProject()">Importar Projeto</button>
-<textarea id="scriptArea" placeholder="Script JS do bloco selecionado"></textarea>
+<div class="window" id="viewport">
+<div class="header">Bluber Engine 2D - Viewport</div>
+<canvas id="game"></canvas>
 </div>
 
-<canvas id="game"></canvas>
+<div class="window" id="hierarchy">
+<div class="header">Hierarchy</div>
+<div class="content" id="hierarchyList"></div>
+</div>
+
+<div class="window" id="inspector">
+<div class="header">Inspector</div>
+<div class="content">
+<label>X</label><input id="propX">
+<label>Y</label><input id="propY">
+<label>Width</label><input id="propW">
+<label>Height</label><input id="propH">
+<label>Script JS</label>
+<textarea id="scriptArea"></textarea>
+<button onclick="applyChanges()">Aplicar</button>
+</div>
+</div>
+
+<div class="window" id="assets">
+<div class="header">Assets</div>
+<div class="content">
+<button onclick="addBlock()">Adicionar Bloco</button>
+<button onclick="toggleMode()">Play / Edit</button>
+<button onclick="saveProject()">Exportar JSON</button>
+<button onclick="loadProject()">Importar JSON</button>
+<input type="file" id="imgLoader">
+</div>
+</div>
 
 <script>
-const canvas = document.getElementById("game");
-const ctx = canvas.getContext("2d");
-canvas.width = window.innerWidth;
-canvas.height = window.innerHeight;
+/* DRAG WINDOWS */
+document.querySelectorAll(".window").forEach(win=>{
+let header=win.querySelector(".header");
+let offsetX,offsetY,isDown=false;
+header.onmousedown=e=>{
+isDown=true;
+offsetX=e.clientX-win.offsetLeft;
+offsetY=e.clientY-win.offsetTop;
+}
+document.onmouseup=()=>isDown=false;
+document.onmousemove=e=>{
+if(isDown){
+win.style.left=e.clientX-offsetX+"px";
+win.style.top=e.clientY-offsetY+"px";
+}
+}
+});
+
+/* ENGINE CORE */
+const canvas=document.getElementById("game");
+const ctx=canvas.getContext("2d");
+canvas.width=800;
+canvas.height=500;
 
 let blocks=[];
 let selected=null;
-let dragging=false;
+let mode="edit";
 
-let player={
-x:0,y:0,w:40,h:40,vy:0,ground:false
-};
+let player={x:0,y:0,w:40,h:40,vy:0};
 
+/* OBJECT SYSTEM */
 function addBlock(){
 let block={
-x:100,
-y:100,
-w:100,
-h:50,
-color:"white",
-img:null,
-script:""
+id:Date.now(),
+name:"Block "+(blocks.length+1),
+x:100,y:100,w:100,h:60,
+color:"#ffffff",
+script:"",
+img:null
 };
 blocks.push(block);
 if(blocks.length===1){
 player.x=block.x;
 player.y=block.y-40;
 }
+refreshHierarchy();
 }
 
-function addScript(){
-if(selected){
-selected.script=document.getElementById("scriptArea").value;
-}
-}
-
-canvas.addEventListener("mousedown",e=>{
-let mx=e.clientX;
-let my=e.clientY;
-selected=null;
+/* HIERARCHY */
+function refreshHierarchy(){
+let list=document.getElementById("hierarchyList");
+list.innerHTML="";
 blocks.forEach(b=>{
-if(mx>b.x && mx<b.x+b.w && my>b.y && my<b.y+b.h){
+let div=document.createElement("div");
+div.className="list-item";
+div.innerText=b.name;
+div.onclick=()=>{
 selected=b;
-document.getElementById("scriptArea").value=b.script;
+updateInspector();
+refreshHierarchy();
+};
+if(selected===b)div.classList.add("selected");
+list.appendChild(div);
+});
 }
-});
-dragging=true;
-});
 
-canvas.addEventListener("mousemove",e=>{
-if(dragging && selected){
-selected.x=e.clientX-selected.w/2;
-selected.y=e.clientY-selected.h/2;
+/* INSPECTOR */
+function updateInspector(){
+if(!selected)return;
+propX.value=selected.x;
+propY.value=selected.y;
+propW.value=selected.w;
+propH.value=selected.h;
+scriptArea.value=selected.script;
 }
-});
 
-canvas.addEventListener("mouseup",()=>dragging=false);
+function applyChanges(){
+if(!selected)return;
+selected.x=parseInt(propX.value);
+selected.y=parseInt(propY.value);
+selected.w=parseInt(propW.value);
+selected.h=parseInt(propH.value);
+selected.script=scriptArea.value;
+}
 
-document.getElementById("imgLoader").addEventListener("change",e=>{
+/* PLAY MODE */
+function toggleMode(){
+mode = mode==="edit" ? "play" : "edit";
+}
+
+/* IMAGE IMPORT */
+imgLoader.addEventListener("change",e=>{
 let file=e.target.files[0];
 let reader=new FileReader();
 reader.onload=function(event){
@@ -105,10 +210,52 @@ selected.img=img;
 reader.readAsDataURL(file);
 });
 
+/* SAVE / LOAD */
+function saveProject(){
+let project={
+engine:"Bluber Engine 2D",
+version:"1.0",
+blocks:blocks
+};
+localStorage.setItem("bluberSave",JSON.stringify(project));
+let blob=new Blob([JSON.stringify(project)],{type:"application/json"});
+let a=document.createElement("a");
+a.href=URL.createObjectURL(blob);
+a.download="BluberProject.json";
+a.click();
+}
+
+function loadProject(){
+let input=document.createElement("input");
+input.type="file";
+input.onchange=e=>{
+let file=e.target.files[0];
+let reader=new FileReader();
+reader.onload=function(event){
+let project=JSON.parse(event.target.result);
+blocks=project.blocks||[];
+refreshHierarchy();
+};
+reader.readAsText(file);
+};
+input.click();
+}
+
+function autoLoad(){
+let saved=localStorage.getItem("bluberSave");
+if(saved){
+let project=JSON.parse(saved);
+blocks=project.blocks||[];
+refreshHierarchy();
+}
+}
+autoLoad();
+
+/* GAME LOOP */
 function update(){
+if(mode==="play"){
 player.vy+=0.5;
 player.y+=player.vy;
-player.ground=false;
 
 blocks.forEach(b=>{
 if(player.x<b.x+b.w &&
@@ -117,15 +264,12 @@ player.y<b.y+b.h &&
 player.y+player.h>b.y){
 player.y=b.y-player.h;
 player.vy=0;
-player.ground=true;
 }
 if(b.script){
-try{
-eval(b.script);
-}catch(e){}
+try{eval(b.script);}catch(e){}
 }
 });
-
+}
 draw();
 requestAnimationFrame(update);
 }
@@ -142,35 +286,11 @@ ctx.fillRect(b.x,b.y,b.w,b.h);
 }
 });
 
-ctx.fillStyle="lime";
+ctx.fillStyle="#00ff00";
 ctx.fillRect(player.x,player.y,player.w,player.h);
-}
-
-function exportProject(){
-let data=JSON.stringify(blocks);
-let blob=new Blob([data],{type:"application/json"});
-let a=document.createElement("a");
-a.href=URL.createObjectURL(blob);
-a.download="projeto.json";
-a.click();
-}
-
-function importProject(){
-let input=document.createElement("input");
-input.type="file";
-input.onchange=e=>{
-let file=e.target.files[0];
-let reader=new FileReader();
-reader.onload=function(event){
-blocks=JSON.parse(event.target.result);
-};
-reader.readAsText(file);
-};
-input.click();
 }
 
 update();
 </script>
-
 </body>
 </html>
