@@ -13,6 +13,9 @@ font-family:Arial;
 overflow:hidden;
 touch-action:none;
 color:white;
+display:flex;
+flex-direction:column;
+height:100vh;
 }
 
 /* TOPBAR */
@@ -23,9 +26,9 @@ display:flex;
 align-items:center;
 gap:8px;
 padding:6px;
+flex-shrink:0;
 }
 
-/* BOTÕES */
 button{
 background:#3a3a3a;
 border:none;
@@ -35,12 +38,15 @@ font-size:13px;
 color:white;
 }
 
+/* ÁREA PRINCIPAL */
+#main{
+flex:1;
+display:flex;
+overflow:hidden;
+}
+
 /* PAINÉIS */
 #explorer{
-position:absolute;
-left:0;
-top:55px;
-bottom:0;
 width:220px;
 background:#181818;
 overflow-y:auto;
@@ -49,11 +55,7 @@ border-right:1px solid #333;
 }
 
 #properties{
-position:absolute;
-right:0;
-top:55px;
-bottom:0;
-width:300px;   /* aumentei */
+width:300px;
 background:#181818;
 overflow-y:auto;
 padding:15px;
@@ -61,16 +63,17 @@ border-left:1px solid #333;
 }
 
 #workspace{
-position:absolute;
-left:220px;
-right:300px;
-top:55px;
-bottom:0;
+flex:1;
 background:#222;
+display:flex;
+justify-content:center;
+align-items:center;
 }
 
 canvas{
 background:#111;
+max-width:100%;
+max-height:100%;
 }
 
 /* SEÇÕES */
@@ -85,7 +88,6 @@ margin:5px 0;
 color:#4da6ff;
 }
 
-/* INPUTS */
 input[type="range"]{
 width:100%;
 }
@@ -101,11 +103,6 @@ color:white;
 border:none;
 padding:6px;
 border-radius:6px;
-}
-
-.valueLabel{
-font-size:12px;
-opacity:0.7;
 }
 
 /* JOYSTICK */
@@ -136,15 +133,16 @@ left:30px;
 
 <div id="topbar">
 <button onclick="addBlock()">Add Block</button>
-<button onclick="addUI()">Add UI</button>
 <button onclick="togglePlay()">Play</button>
 <button onclick="exportProject()">Export</button>
 <button onclick="importProject()">Import</button>
 </div>
 
+<div id="main">
 <div id="explorer"><h3>Explorer</h3><div id="list"></div></div>
-<div id="properties"><h3>Properties</h3><div id="props"></div></div>
 <div id="workspace"><canvas id="game"></canvas></div>
+<div id="properties"><h3>Properties</h3><div id="props"></div></div>
+</div>
 
 <div class="joystick" id="joy">
 <div class="knob" id="knob"></div>
@@ -155,11 +153,14 @@ left:30px;
 let canvas=document.getElementById("game");
 let ctx=canvas.getContext("2d");
 
-canvas.width=window.innerWidth-520;
-canvas.height=window.innerHeight-55;
+function resizeCanvas(){
+canvas.width=canvas.parentElement.clientWidth;
+canvas.height=canvas.parentElement.clientHeight;
+}
+window.addEventListener("resize",resizeCanvas);
+resizeCanvas();
 
 let blocks=[];
-let uiElements=[];
 let selected=null;
 let playMode=false;
 let player=null;
@@ -170,19 +171,7 @@ blocks.push({
 name:"Block"+blocks.length,
 x:100,y:100,w:80,h:80,
 color:"#ffffff",
-image:null,
-script:"",
 type:"normal"
-});
-updateExplorer();
-}
-
-function addUI(){
-uiElements.push({
-name:"UI"+uiElements.length,
-x:150,y:150,
-text:"Botão",
-script:"alert('clicou')"
 });
 updateExplorer();
 }
@@ -193,12 +182,6 @@ list.innerHTML="";
 blocks.forEach(obj=>{
 let div=document.createElement("div");
 div.innerText=obj.name;
-div.onclick=()=>select(obj);
-list.appendChild(div);
-});
-uiElements.forEach(obj=>{
-let div=document.createElement("div");
-div.innerText=obj.name+" (UI)";
 div.onclick=()=>select(obj);
 list.appendChild(div);
 });
@@ -214,92 +197,42 @@ let p=document.getElementById("props");
 p.innerHTML="";
 if(!selected)return;
 
-/* TRANSFORM */
-let transform=createSection("Transform");
+let sec=document.createElement("div");
+sec.className="section";
+sec.innerHTML="<h4>Transform</h4>";
+p.appendChild(sec);
 
-createSlider(transform,"X",selected.x,v=>selected.x=v);
-createSlider(transform,"Y",selected.y,v=>selected.y=v);
-
-if(selected.w!==undefined){
-createSlider(transform,"Width",selected.w,v=>selected.w=v);
-createSlider(transform,"Height",selected.h,v=>selected.h=v);
-}
-
-/* APARÊNCIA */
-if(selected.color!==undefined){
-let appearance=createSection("Appearance");
+createSlider(sec,"X","x");
+createSlider(sec,"Y","y");
+createSlider(sec,"Width","w");
+createSlider(sec,"Height","h");
 
 let color=document.createElement("input");
 color.type="color";
 color.value=selected.color;
 color.oninput=()=>selected.color=color.value;
-appearance.appendChild(color);
+p.appendChild(color);
 
-let imgBtn=document.createElement("button");
-imgBtn.innerText="Import Image";
-imgBtn.onclick=()=>{
-let input=document.createElement("input");
-input.type="file";
-input.accept="image/*";
-input.onchange=e=>{
-let reader=new FileReader();
-reader.onload=ev=>selected.image=ev.target.result;
-reader.readAsDataURL(e.target.files[0]);
-};
-input.click();
-};
-appearance.appendChild(imgBtn);
+let type=document.createElement("select");
+type.innerHTML="<option value='normal'>Normal</option><option value='player'>Player</option><option value='monster'>Monster</option>";
+type.value=selected.type;
+type.onchange=()=>selected.type=type.value;
+p.appendChild(type);
 }
 
-/* TYPE */
-if(selected.type!==undefined){
-let typeSec=createSection("Object Type");
-let select=document.createElement("select");
-select.innerHTML="<option value='normal'>Normal</option><option value='player'>Player</option><option value='monster'>Monster</option>";
-select.value=selected.type;
-select.onchange=()=>selected.type=select.value;
-typeSec.appendChild(select);
-}
-
-/* SCRIPT */
-let scriptSec=createSection("Script");
-let area=document.createElement("textarea");
-area.rows=5;
-area.value=selected.script||"";
-area.oninput=()=>selected.script=area.value;
-scriptSec.appendChild(area);
-}
-
-function createSection(title){
-let p=document.getElementById("props");
-let sec=document.createElement("div");
-sec.className="section";
-let h=document.createElement("h4");
-h.innerText=title;
-sec.appendChild(h);
-p.appendChild(sec);
-return sec;
-}
-
-function createSlider(parent,label,value,callback){
-let text=document.createElement("div");
-text.innerHTML=label+" <span class='valueLabel'>"+value+"</span>";
-parent.appendChild(text);
+function createSlider(parent,label,key){
+let labelEl=document.createElement("div");
+labelEl.innerText=label;
+parent.appendChild(labelEl);
 
 let input=document.createElement("input");
 input.type="range";
 input.min=0;
 input.max=1000;
-input.value=value;
-input.oninput=()=>{
-callback(Number(input.value));
-text.innerHTML=label+" <span class='valueLabel'>"+input.value+"</span>";
-};
+input.value=selected[key];
+input.oninput=()=>selected[key]=Number(input.value);
 parent.appendChild(input);
 }
-
-/* RESTO DO SISTEMA (render, joystick, play, export/import) */
-/* Mantive igual para não quebrar nada */
 
 function togglePlay(){
 playMode=!playMode;
@@ -324,21 +257,12 @@ function loop(){
 ctx.clearRect(0,0,canvas.width,canvas.height);
 
 blocks.forEach(b=>{
-if(b.image){
-let img=new Image();
-img.src=b.image;
-ctx.drawImage(img,b.x,b.y,b.w,b.h);
-}else{
 ctx.fillStyle=b.color;
 ctx.fillRect(b.x,b.y,b.w,b.h);
-}
 });
 
 if(playMode){
 blocks.forEach(b=>{
-if(b.script){
-try{new Function("self","player",b.script)(b,player)}catch{}
-}
 if(b.type=="monster"&&player){
 let dx=player.x-b.x;
 let dy=player.y-b.y;
@@ -380,8 +304,7 @@ knob.style.top="30px";
 };
 
 function exportProject(){
-let data={blocks,uiElements};
-let blob=new Blob([JSON.stringify(data)],{type:"application/json"});
+let blob=new Blob([JSON.stringify(blocks)],{type:"application/json"});
 let a=document.createElement("a");
 a.href=URL.createObjectURL(blob);
 a.download="BluberProject.json";
@@ -395,9 +318,7 @@ input.accept=".json";
 input.onchange=e=>{
 let reader=new FileReader();
 reader.onload=ev=>{
-let data=JSON.parse(ev.target.result);
-blocks=data.blocks||[];
-uiElements=data.uiElements||[];
+blocks=JSON.parse(ev.target.result);
 updateExplorer();
 };
 reader.readAsText(e.target.files[0]);
