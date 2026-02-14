@@ -2,28 +2,33 @@
 <html>
 <head>
 <meta charset="UTF-8">
-<title>Mini Engine 2D</title>
+<title>Ultra 2D Engine</title>
 <style>
-body { margin:0; overflow:hidden; background:#111; }
-canvas { background:#222; display:block; margin:0 auto; }
-#ui {
+body{margin:0;overflow:hidden;background:#111;font-family:Arial;}
+canvas{background:#222;display:block;}
+#ui{
 position:fixed;
 top:10px;
 left:10px;
-background:#000a;
+background:#000c;
 padding:10px;
 border-radius:10px;
 color:white;
-font-family:Arial;
+width:250px;
 }
-button { margin:5px; padding:5px 10px; }
+button,input{margin:5px;width:100%;}
+textarea{width:100%;height:80px;}
 </style>
 </head>
 <body>
 
 <div id="ui">
 <button onclick="addBlock()">Adicionar Bloco</button>
-<button onclick="toggleMode()">Modo: Jogar</button>
+<button onclick="addScript()">Adicionar Script</button>
+<input type="file" id="imgLoader">
+<button onclick="exportProject()">Exportar Projeto</button>
+<button onclick="importProject()">Importar Projeto</button>
+<textarea id="scriptArea" placeholder="Script JS do bloco selecionado"></textarea>
 </div>
 
 <canvas id="game"></canvas>
@@ -34,67 +39,92 @@ const ctx = canvas.getContext("2d");
 canvas.width = window.innerWidth;
 canvas.height = window.innerHeight;
 
-let blocks = [];
-let mode = "play";
+let blocks=[];
+let selected=null;
+let dragging=false;
 
-let player = {
-x:100,
-y:100,
-w:40,
-h:40,
-vx:0,
-vy:0,
-speed:5,
-jump:-12,
-grounded:false
+let player={
+x:0,y:0,w:40,h:40,vy:0,ground:false
 };
 
 function addBlock(){
-blocks.push({
-x:Math.random()*canvas.width,
-y:Math.random()*canvas.height,
-w:80,
-h:20
+let block={
+x:100,
+y:100,
+w:100,
+h:50,
+color:"white",
+img:null,
+script:""
+};
+blocks.push(block);
+if(blocks.length===1){
+player.x=block.x;
+player.y=block.y-40;
+}
+}
+
+function addScript(){
+if(selected){
+selected.script=document.getElementById("scriptArea").value;
+}
+}
+
+canvas.addEventListener("mousedown",e=>{
+let mx=e.clientX;
+let my=e.clientY;
+selected=null;
+blocks.forEach(b=>{
+if(mx>b.x && mx<b.x+b.w && my>b.y && my<b.y+b.h){
+selected=b;
+document.getElementById("scriptArea").value=b.script;
+}
 });
-}
+dragging=true;
+});
 
-function toggleMode(){
-mode = mode === "play" ? "edit" : "play";
-document.querySelector("#ui button:nth-child(2)").innerText =
-"Modo: " + (mode === "play" ? "Jogar" : "Editar");
+canvas.addEventListener("mousemove",e=>{
+if(dragging && selected){
+selected.x=e.clientX-selected.w/2;
+selected.y=e.clientY-selected.h/2;
 }
+});
 
-let keys = {};
-window.addEventListener("keydown",e=>keys[e.key]=true);
-window.addEventListener("keyup",e=>keys[e.key]=false);
+canvas.addEventListener("mouseup",()=>dragging=false);
+
+document.getElementById("imgLoader").addEventListener("change",e=>{
+let file=e.target.files[0];
+let reader=new FileReader();
+reader.onload=function(event){
+if(selected){
+let img=new Image();
+img.src=event.target.result;
+selected.img=img;
+}
+}
+reader.readAsDataURL(file);
+});
 
 function update(){
-if(mode==="play"){
-player.vx = 0;
-if(keys["a"]) player.vx = -player.speed;
-if(keys["d"]) player.vx = player.speed;
+player.vy+=0.5;
+player.y+=player.vy;
+player.ground=false;
 
-if(keys["w"] && player.grounded){
-player.vy = player.jump;
-player.grounded = false;
-}
-
-player.vy += 0.6;
-player.x += player.vx;
-player.y += player.vy;
-
-player.grounded = false;
 blocks.forEach(b=>{
-if(player.x < b.x+b.w &&
-player.x+player.w > b.x &&
-player.y < b.y+b.h &&
-player.y+player.h > b.y){
-player.y = b.y - player.h;
-player.vy = 0;
-player.grounded = true;
+if(player.x<b.x+b.w &&
+player.x+player.w>b.x &&
+player.y<b.y+b.h &&
+player.y+player.h>b.y){
+player.y=b.y-player.h;
+player.vy=0;
+player.ground=true;
+}
+if(b.script){
+try{
+eval(b.script);
+}catch(e){}
 }
 });
-}
 
 draw();
 requestAnimationFrame(update);
@@ -103,13 +133,40 @@ requestAnimationFrame(update);
 function draw(){
 ctx.clearRect(0,0,canvas.width,canvas.height);
 
+blocks.forEach(b=>{
+if(b.img){
+ctx.drawImage(b.img,b.x,b.y,b.w,b.h);
+}else{
+ctx.fillStyle=b.color;
+ctx.fillRect(b.x,b.y,b.w,b.h);
+}
+});
+
 ctx.fillStyle="lime";
 ctx.fillRect(player.x,player.y,player.w,player.h);
+}
 
-ctx.fillStyle="white";
-blocks.forEach(b=>{
-ctx.fillRect(b.x,b.y,b.w,b.h);
-});
+function exportProject(){
+let data=JSON.stringify(blocks);
+let blob=new Blob([data],{type:"application/json"});
+let a=document.createElement("a");
+a.href=URL.createObjectURL(blob);
+a.download="projeto.json";
+a.click();
+}
+
+function importProject(){
+let input=document.createElement("input");
+input.type="file";
+input.onchange=e=>{
+let file=e.target.files[0];
+let reader=new FileReader();
+reader.onload=function(event){
+blocks=JSON.parse(event.target.result);
+};
+reader.readAsText(file);
+};
+input.click();
 }
 
 update();
