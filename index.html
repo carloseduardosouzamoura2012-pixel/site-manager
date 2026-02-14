@@ -11,101 +11,66 @@ margin:0;
 background:#1e1e1e;
 font-family:Arial;
 overflow:hidden;
-touch-action:none;
 color:white;
 display:flex;
 flex-direction:column;
 height:100vh;
 }
 
-/* TOPBAR */
 #topbar{
-height:55px;
+height:50px;
 background:#111;
 display:flex;
 align-items:center;
 gap:8px;
-padding:6px;
+padding:5px;
 flex-shrink:0;
 }
 
 button{
 background:#3a3a3a;
 border:none;
-border-radius:10px;
-padding:8px 12px;
-font-size:13px;
+border-radius:8px;
+padding:6px 10px;
 color:white;
 }
 
-/* ÁREA PRINCIPAL */
 #main{
 flex:1;
 display:flex;
 overflow:hidden;
 }
 
-/* PAINÉIS */
-#explorer{
-width:220px;
+.panel{
 background:#181818;
-overflow-y:auto;
+overflow:auto;
 padding:10px;
-border-right:1px solid #333;
 }
 
-#properties{
-width:300px;
-background:#181818;
-overflow-y:auto;
-padding:15px;
-border-left:1px solid #333;
-}
+#explorer{width:180px;border-right:1px solid #333;}
+#properties{width:260px;border-left:1px solid #333;}
+#uiEditor{width:200px;border-left:1px solid #333;}
+#workspace{flex:1;display:flex;justify-content:center;align-items:center;background:#222;}
 
-#workspace{
-flex:1;
-background:#222;
-display:flex;
-justify-content:center;
-align-items:center;
-}
+canvas{background:#111;}
 
-canvas{
-background:#111;
-max-width:100%;
-max-height:100%;
-}
-
-/* SEÇÕES */
 .section{
-margin-bottom:20px;
-padding-bottom:10px;
+margin-bottom:15px;
 border-bottom:1px solid #333;
+padding-bottom:10px;
 }
 
-.section h4{
-margin:5px 0;
-color:#4da6ff;
-}
-
-input[type="range"]{
-width:100%;
-}
-
-input[type="color"],
-select,
-textarea{
+input,select,textarea{
 width:100%;
 margin-top:5px;
-margin-bottom:10px;
+margin-bottom:8px;
 background:#2b2b2b;
 color:white;
 border:none;
-padding:6px;
+padding:5px;
 border-radius:6px;
 }
 
-/* JOYSTICK */
 .joystick{
 position:absolute;
 width:120px;
@@ -126,6 +91,10 @@ background:rgba(255,255,255,0.6);
 top:30px;
 left:30px;
 }
+
+.gameUI{
+position:absolute;
+}
 </style>
 </head>
 
@@ -133,20 +102,19 @@ left:30px;
 
 <div id="topbar">
 <button onclick="addBlock()">Add Block</button>
+<button onclick="addUIButton()">Add UI Button</button>
+<button onclick="addUIText()">Add UI Text</button>
 <button onclick="togglePlay()">Play</button>
-<button onclick="exportProject()">Export</button>
-<button onclick="importProject()">Import</button>
 </div>
 
 <div id="main">
-<div id="explorer"><h3>Explorer</h3><div id="list"></div></div>
+<div id="explorer" class="panel"><h3>Explorer</h3><div id="list"></div></div>
 <div id="workspace"><canvas id="game"></canvas></div>
-<div id="properties"><h3>Properties</h3><div id="props"></div></div>
+<div id="properties" class="panel"><h3>Properties</h3><div id="props"></div></div>
+<div id="uiEditor" class="panel"><h3>UI Editor</h3><div id="uiList"></div></div>
 </div>
 
-<div class="joystick" id="joy">
-<div class="knob" id="knob"></div>
-</div>
+<div class="joystick" id="joy"><div class="knob" id="knob"></div></div>
 
 <script>
 
@@ -161,20 +129,51 @@ window.addEventListener("resize",resizeCanvas);
 resizeCanvas();
 
 let blocks=[];
+let uiElements=[];
 let selected=null;
 let playMode=false;
 let player=null;
 let startPos={x:100,y:100};
+
+/* ---------- CRIAÇÃO ---------- */
 
 function addBlock(){
 blocks.push({
 name:"Block"+blocks.length,
 x:100,y:100,w:80,h:80,
 color:"#ffffff",
+image:null,
+script:"",
 type:"normal"
 });
 updateExplorer();
 }
+
+function addUIButton(){
+uiElements.push({
+name:"UIButton"+uiElements.length,
+type:"button",
+x:200,y:200,
+text:"Button",
+script:""
+});
+updateUIEditor();
+renderUI();
+}
+
+function addUIText(){
+uiElements.push({
+name:"UIText"+uiElements.length,
+type:"text",
+x:200,y:250,
+text:"Text",
+script:""
+});
+updateUIEditor();
+renderUI();
+}
+
+/* ---------- EXPLORER ---------- */
 
 function updateExplorer(){
 let list=document.getElementById("list");
@@ -187,6 +186,19 @@ list.appendChild(div);
 });
 }
 
+function updateUIEditor(){
+let list=document.getElementById("uiList");
+list.innerHTML="";
+uiElements.forEach(obj=>{
+let div=document.createElement("div");
+div.innerText=obj.name;
+div.onclick=()=>select(obj);
+list.appendChild(div);
+});
+}
+
+/* ---------- PROPERTIES ---------- */
+
 function select(obj){
 selected=obj;
 showProperties();
@@ -197,42 +209,144 @@ let p=document.getElementById("props");
 p.innerHTML="";
 if(!selected)return;
 
-let sec=document.createElement("div");
-sec.className="section";
-sec.innerHTML="<h4>Transform</h4>";
-p.appendChild(sec);
+let temp=JSON.parse(JSON.stringify(selected));
 
-createSlider(sec,"X","x");
-createSlider(sec,"Y","y");
-createSlider(sec,"Width","w");
-createSlider(sec,"Height","h");
-
-let color=document.createElement("input");
-color.type="color";
-color.value=selected.color;
-color.oninput=()=>selected.color=color.value;
-p.appendChild(color);
-
-let type=document.createElement("select");
-type.innerHTML="<option value='normal'>Normal</option><option value='player'>Player</option><option value='monster'>Monster</option>";
-type.value=selected.type;
-type.onchange=()=>selected.type=type.value;
-p.appendChild(type);
+function section(title){
+let s=document.createElement("div");
+s.className="section";
+s.innerHTML="<b>"+title+"</b>";
+p.appendChild(s);
+return s;
 }
 
-function createSlider(parent,label,key){
-let labelEl=document.createElement("div");
-labelEl.innerText=label;
-parent.appendChild(labelEl);
-
+let transform=section("Transform");
+["x","y"].forEach(k=>{
 let input=document.createElement("input");
 input.type="range";
 input.min=0;
 input.max=1000;
-input.value=selected[key];
-input.oninput=()=>selected[key]=Number(input.value);
-parent.appendChild(input);
+input.value=temp[k];
+input.oninput=()=>temp[k]=Number(input.value);
+transform.appendChild(document.createTextNode(k.toUpperCase()));
+transform.appendChild(input);
+});
+
+if(temp.w!==undefined){
+["w","h"].forEach(k=>{
+let input=document.createElement("input");
+input.type="range";
+input.min=0;
+input.max=1000;
+input.value=temp[k];
+input.oninput=()=>temp[k]=Number(input.value);
+transform.appendChild(document.createTextNode(k.toUpperCase()));
+transform.appendChild(input);
+});
+
+let appearance=section("Appearance");
+
+let color=document.createElement("input");
+color.type="color";
+color.value=temp.color;
+color.oninput=()=>temp.color=color.value;
+appearance.appendChild(color);
+
+let imgBtn=document.createElement("button");
+imgBtn.innerText="Import Image";
+imgBtn.onclick=()=>{
+let input=document.createElement("input");
+input.type="file";
+input.accept="image/*";
+input.onchange=e=>{
+let reader=new FileReader();
+reader.onload=ev=>temp.image=ev.target.result;
+reader.readAsDataURL(e.target.files[0]);
+};
+input.click();
+};
+appearance.appendChild(imgBtn);
+
+let typeSelect=document.createElement("select");
+typeSelect.innerHTML="<option value='normal'>Normal</option><option value='player'>Player</option><option value='monster'>Monster</option>";
+typeSelect.value=temp.type;
+typeSelect.onchange=()=>temp.type=typeSelect.value;
+appearance.appendChild(typeSelect);
 }
+
+let scriptSec=section("Script");
+let area=document.createElement("textarea");
+area.rows=4;
+area.value=temp.script||"";
+area.oninput=()=>temp.script=area.value;
+scriptSec.appendChild(area);
+
+let apply=document.createElement("button");
+apply.innerText="Aplicar";
+apply.onclick=()=>{
+Object.assign(selected,temp);
+renderUI();
+};
+p.appendChild(apply);
+}
+
+/* ---------- RENDER ---------- */
+
+function loop(){
+ctx.clearRect(0,0,canvas.width,canvas.height);
+
+blocks.forEach(b=>{
+if(b.image){
+let img=new Image();
+img.src=b.image;
+ctx.drawImage(img,b.x,b.y,b.w,b.h);
+}else{
+ctx.fillStyle=b.color;
+ctx.fillRect(b.x,b.y,b.w,b.h);
+}
+});
+
+if(playMode){
+blocks.forEach(b=>{
+if(b.script){
+try{new Function("self","player",b.script)(b,player)}catch{}
+}
+if(b.type=="monster"&&player){
+let dx=player.x-b.x;
+let dy=player.y-b.y;
+b.x+=dx*0.02;
+b.y+=dy*0.02;
+if(collide(b,player)){
+player.x=startPos.x;
+player.y=startPos.y;
+}
+}
+});
+}
+
+requestAnimationFrame(loop);
+}
+loop();
+
+function renderUI(){
+document.querySelectorAll(".gameUI").forEach(e=>e.remove());
+uiElements.forEach(u=>{
+let el;
+if(u.type=="button"){
+el=document.createElement("button");
+el.innerText=u.text;
+}else{
+el=document.createElement("div");
+el.innerText=u.text;
+}
+el.className="gameUI";
+el.style.left=u.x+"px";
+el.style.top=u.y+"px";
+el.onclick=()=>{if(u.script) new Function(u.script)();};
+document.body.appendChild(el);
+});
+}
+
+/* ---------- PLAY ---------- */
 
 function togglePlay(){
 playMode=!playMode;
@@ -253,34 +367,8 @@ a.y<b.y+b.h&&
 a.y+a.h>b.y;
 }
 
-function loop(){
-ctx.clearRect(0,0,canvas.width,canvas.height);
+/* ---------- JOYSTICK ---------- */
 
-blocks.forEach(b=>{
-ctx.fillStyle=b.color;
-ctx.fillRect(b.x,b.y,b.w,b.h);
-});
-
-if(playMode){
-blocks.forEach(b=>{
-if(b.type=="monster"&&player){
-let dx=player.x-b.x;
-let dy=player.y-b.y;
-b.x+=dx*0.02;
-b.y+=dy*0.02;
-if(collide(b,player)){
-player.x=startPos.x;
-player.y=startPos.y;
-}
-}
-});
-}
-
-requestAnimationFrame(loop);
-}
-loop();
-
-/* JOYSTICK */
 let joy=document.getElementById("joy");
 let knob=document.getElementById("knob");
 
@@ -302,29 +390,6 @@ joy.onpointerup=()=>{
 knob.style.left="30px";
 knob.style.top="30px";
 };
-
-function exportProject(){
-let blob=new Blob([JSON.stringify(blocks)],{type:"application/json"});
-let a=document.createElement("a");
-a.href=URL.createObjectURL(blob);
-a.download="BluberProject.json";
-a.click();
-}
-
-function importProject(){
-let input=document.createElement("input");
-input.type="file";
-input.accept=".json";
-input.onchange=e=>{
-let reader=new FileReader();
-reader.onload=ev=>{
-blocks=JSON.parse(ev.target.result);
-updateExplorer();
-};
-reader.readAsText(e.target.files[0]);
-};
-input.click();
-}
 
 </script>
 </body>
