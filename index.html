@@ -5,14 +5,27 @@
 <title>Bluber Engine 2D</title>
 <style>
 body{margin:0;background:#111;font-family:Arial;color:white;overflow:hidden;}
-.window{position:absolute;background:#1c1c1c;border:1px solid #333;border-radius:8px;resize:both;overflow:hidden;display:flex;flex-direction:column;}
+.window{position:absolute;background:#1c1c1c;border:1px solid #333;border-radius:8px;display:flex;flex-direction:column;resize:both;overflow:hidden;}
 .header{background:#2a2a2a;padding:6px;cursor:move;font-weight:bold;}
-.content{flex:1;padding:8px;overflow:auto;}
-#viewport{top:10px;left:10px;width:60%;height:70%;}
-#inspector{top:10px;right:10px;width:35%;height:70%;}
-#assets{bottom:10px;left:10px;width:60%;height:20%;}
+.content{flex:1;overflow:auto;padding:8px;}
+#viewport{top:10px;left:10px;width:60%;height:65%;}
+#explorer{top:10px;right:10px;width:35%;height:30%;}
+#inspector{top:42%;right:10px;width:35%;height:45%;}
+#toolbar{bottom:10px;left:10px;width:60%;height:20%;}
 canvas{background:#222;width:100%;height:100%;}
-input,button,textarea,select{width:100%;margin-top:5px;background:#2a2a2a;color:white;border:1px solid #444;padding:5px;border-radius:5px;}
+input,textarea,select,button{width:100%;margin-top:5px;background:#2a2a2a;color:white;border:1px solid #444;padding:5px;border-radius:5px;}
+.list{background:#222;padding:4px;margin-top:4px;cursor:pointer;border-radius:4px;}
+.selected{background:#0066ff;}
+#joystick{
+position:absolute;
+bottom:40px;
+left:40px;
+width:100px;
+height:100px;
+background:rgba(255,255,255,0.1);
+border-radius:50%;
+display:none;
+}
 </style>
 </head>
 <body>
@@ -22,6 +35,11 @@ input,button,textarea,select{width:100%;margin-top:5px;background:#2a2a2a;color:
 <canvas id="game"></canvas>
 </div>
 
+<div class="window" id="explorer">
+<div class="header">Explorer</div>
+<div class="content" id="objectList"></div>
+</div>
+
 <div class="window" id="inspector">
 <div class="header">Inspector</div>
 <div class="content">
@@ -29,109 +47,96 @@ input,button,textarea,select{width:100%;margin-top:5px;background:#2a2a2a;color:
 <label>Y</label><input id="propY">
 <label>Width</label><input id="propW">
 <label>Height</label><input id="propH">
-<label>Color</label><input type="color" id="propColor">
+<label>Cor</label><input type="color" id="propColor">
 <label>Tipo</label>
 <select id="propType">
 <option value="normal">Normal</option>
 <option value="monster">Monstro</option>
+<option value="ui">UI</option>
 </select>
+<label>Script (JS)</label>
+<textarea id="propScript" placeholder="// onStart()\n// onUpdate()"></textarea>
 <button onclick="applyChanges()">Aplicar</button>
 </div>
 </div>
 
-<div class="window" id="assets">
-<div class="header">Assets</div>
+<div class="window" id="toolbar">
+<div class="header">Bluber Engine 2D</div>
 <div class="content">
 <button onclick="addBlock()">Adicionar Bloco</button>
-<button onclick="toggleMode()">Play/Edit</button>
-<input type="file" id="imgLoader">
+<button onclick="addUI()">Adicionar UI</button>
+<button onclick="toggleMode()">Play / Edit</button>
 </div>
 </div>
+
+<div id="joystick"></div>
 
 <script>
-/* DRAG JANELAS */
+/* DRAG WINDOWS */
 document.querySelectorAll(".window").forEach(win=>{
 let header=win.querySelector(".header");
-let offsetX,offsetY,isDown=false;
-header.onmousedown=e=>{
-isDown=true;
-offsetX=e.clientX-win.offsetLeft;
-offsetY=e.clientY-win.offsetTop;
-}
-document.onmouseup=()=>isDown=false;
-document.onmousemove=e=>{
-if(isDown){
-win.style.left=e.clientX-offsetX+"px";
-win.style.top=e.clientY-offsetY+"px";
-}
-}
+let ox,oy,drag=false;
+header.onmousedown=e=>{drag=true;ox=e.clientX-win.offsetLeft;oy=e.clientY-win.offsetTop;}
+document.onmouseup=()=>drag=false;
+document.onmousemove=e=>{if(drag){win.style.left=e.clientX-ox+"px";win.style.top=e.clientY-oy+"px";}}
 });
 
-/* ENGINE */
+/* ENGINE CORE */
 const canvas=document.getElementById("game");
 const ctx=canvas.getContext("2d");
 canvas.width=800;
 canvas.height=500;
 
-let blocks=[];
-let selected=null;
-let dragging=false;
 let mode="edit";
+let objects=[];
+let runtimeObjects=[];
+let selected=null;
 
-let player={x:0,y:0,w:40,h:40,vy:0,startX:0,startY:0};
+let player={x:0,y:0,w:40,h:40,vy:0,startX:0,startY:0,speed:4};
 
-/* CRIAR BLOCO */
+/* OBJECT SYSTEM */
 function addBlock(){
-let block={
+let obj={
+id:Date.now(),
+name:"Object "+objects.length,
 x:100,y:100,w:100,h:60,
 color:"#ffffff",
-img:null,
-type:"normal"
+type:"normal",
+script:""
 };
-blocks.push(block);
-if(blocks.length===1){
-player.startX=block.x;
-player.startY=block.y-40;
-resetPlayer();
+objects.push(obj);
+if(objects.length===1){
+player.startX=obj.x;
+player.startY=obj.y-40;
 }
-}
-
-/* RESET PLAYER */
-function resetPlayer(){
-player.x=player.startX;
-player.y=player.startY;
-player.vy=0;
+refreshExplorer();
 }
 
-/* SELECIONAR + ARRASTAR */
-canvas.addEventListener("mousedown",e=>{
-if(mode!=="edit")return;
-let rect=canvas.getBoundingClientRect();
-let mx=(e.clientX-rect.left)*(canvas.width/rect.width);
-let my=(e.clientY-rect.top)*(canvas.height/rect.height);
-selected=null;
-
-blocks.forEach(b=>{
-if(mx>b.x && mx<b.x+b.w && my>b.y && my<b.y+b.h){
-selected=b;
-updateInspector();
-dragging=true;
+function addUI(){
+let obj={
+id:Date.now(),
+name:"UI "+objects.length,
+x:200,y:50,w:150,h:40,
+color:"#00aaff",
+type:"ui",
+script:""
+};
+objects.push(obj);
+refreshExplorer();
 }
+
+/* EXPLORER */
+function refreshExplorer(){
+let list=document.getElementById("objectList");
+list.innerHTML="";
+objects.forEach(o=>{
+let div=document.createElement("div");
+div.className="list"+(selected===o?" selected":"");
+div.innerText=o.name;
+div.onclick=()=>{selected=o;updateInspector();refreshExplorer();}
+list.appendChild(div);
 });
-});
-
-canvas.addEventListener("mousemove",e=>{
-if(dragging && selected){
-let rect=canvas.getBoundingClientRect();
-let mx=(e.clientX-rect.left)*(canvas.width/rect.width);
-let my=(e.clientY-rect.top)*(canvas.height/rect.height);
-selected.x=mx-selected.w/2;
-selected.y=my-selected.h/2;
-updateInspector();
 }
-});
-
-canvas.addEventListener("mouseup",()=>dragging=false);
 
 /* INSPECTOR */
 function updateInspector(){
@@ -142,6 +147,7 @@ propW.value=selected.w;
 propH.value=selected.h;
 propColor.value=selected.color;
 propType.value=selected.type;
+propScript.value=selected.script;
 }
 
 function applyChanges(){
@@ -152,64 +158,78 @@ selected.w=parseInt(propW.value);
 selected.h=parseInt(propH.value);
 selected.color=propColor.value;
 selected.type=propType.value;
+selected.script=propScript.value;
 }
-
-/* IMPORTAR IMAGEM */
-imgLoader.addEventListener("change",e=>{
-let file=e.target.files[0];
-let reader=new FileReader();
-reader.onload=function(event){
-let img=new Image();
-img.src=event.target.result;
-let block={
-x:150,y:150,w:100,h:100,
-color:"#ffffff",
-img:img,
-type:"normal"
-};
-blocks.push(block);
-};
-reader.readAsDataURL(file);
-});
 
 /* PLAY MODE */
 function toggleMode(){
-mode=mode==="edit"?"play":"edit";
+if(mode==="edit"){
+mode="play";
+runtimeObjects=JSON.parse(JSON.stringify(objects));
+player.x=player.startX;
+player.y=player.startY;
+document.getElementById("joystick").style.display="block";
+}else{
+mode="edit";
+document.getElementById("joystick").style.display="none";
+}
 }
 
-/* LOOP */
+/* JOYSTICK */
+let joy=document.getElementById("joystick");
+let joyActive=false,joyX=0;
+joy.ontouchstart=e=>{joyActive=true;}
+joy.ontouchmove=e=>{
+let touch=e.touches[0];
+joyX=(touch.clientX-joy.offsetLeft-50)/50;
+}
+joy.ontouchend=()=>{joyActive=false;joyX=0;}
+
+/* GAME LOOP */
 function update(){
 if(mode==="play"){
 player.vy+=0.5;
 player.y+=player.vy;
 
-blocks.forEach(b=>{
-// COLISÃO CHÃO
-if(player.x<b.x+b.w &&
-player.x+player.w>b.x &&
-player.y<b.y+b.h &&
-player.y+player.h>b.y){
-player.y=b.y-player.h;
+if(joyActive){
+player.x+=joyX*player.speed;
+}
+
+runtimeObjects.forEach(o=>{
+// chão
+if(o.type==="normal"){
+if(player.x<o.x+o.w &&
+player.x+player.w>o.x &&
+player.y<o.y+o.h &&
+player.y+player.h>o.y){
+player.y=o.y-player.h;
 player.vy=0;
 }
-
-// MONSTRO SEGUE PLAYER
-if(b.type==="monster"){
-let dx=player.x-b.x;
-let dy=player.y-b.y;
-let dist=Math.sqrt(dx*dx+dy*dy);
-if(dist>1){
-b.x+=dx/dist*1.5;
-b.y+=dy/dist*1.5;
+}
+// monstro
+if(o.type==="monster"){
+let dx=player.x-o.x;
+let dy=player.y-o.y;
+let d=Math.sqrt(dx*dx+dy*dy);
+o.x+=dx/d*1.2;
+o.y+=dy/d*1.2;
+if(player.x<o.x+o.w &&
+player.x+player.w>o.x &&
+player.y<o.y+o.h &&
+player.y+player.h>o.y){
+player.x=player.startX;
+player.y=player.startY;
+}
 }
 
-// SE ENCOSTAR → RESET
-if(player.x<b.x+b.w &&
-player.x+player.w>b.x &&
-player.y<b.y+b.h &&
-player.y+player.h>b.y){
-resetPlayer();
-}
+// SCRIPT EXECUTION
+if(o.script){
+try{
+let onStart=()=>{};
+let onUpdate=()=>{};
+eval(o.script);
+onUpdate();
+}catch(e){}
 }
 });
 }
@@ -218,24 +238,20 @@ draw();
 requestAnimationFrame(update);
 }
 
-/* DESENHO */
+/* DRAW */
 function draw(){
 ctx.clearRect(0,0,canvas.width,canvas.height);
-
-blocks.forEach(b=>{
-if(b.img){
-ctx.drawImage(b.img,b.x,b.y,b.w,b.h);
-}else{
-ctx.fillStyle=b.color;
-ctx.fillRect(b.x,b.y,b.w,b.h);
-}
+let list=mode==="play"?runtimeObjects:objects;
+list.forEach(o=>{
+ctx.fillStyle=o.color;
+ctx.fillRect(o.x,o.y,o.w,o.h);
 });
-
 ctx.fillStyle="lime";
 ctx.fillRect(player.x,player.y,player.w,player.h);
 }
 
 update();
+refreshExplorer();
 </script>
 </body>
 </html>
