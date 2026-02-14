@@ -2,156 +2,117 @@
 <html>
 <head>
 <meta charset="UTF-8">
-<title>GitHub Site Creator</title>
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Mini Engine 2D</title>
 <style>
-body{
-background:#0d1117;
+body { margin:0; overflow:hidden; background:#111; }
+canvas { background:#222; display:block; margin:0 auto; }
+#ui {
+position:fixed;
+top:10px;
+left:10px;
+background:#000a;
+padding:10px;
+border-radius:10px;
 color:white;
 font-family:Arial;
-text-align:center;
-padding:20px;
 }
-textarea,input{
-width:95%;
-padding:10px;
-margin:8px 0;
-border-radius:8px;
-border:none;
-}
-button{
-padding:10px 15px;
-border:none;
-border-radius:8px;
-background:#238636;
-color:white;
-font-weight:bold;
-cursor:pointer;
-}
-#status{
-margin-top:15px;
-}
+button { margin:5px; padding:5px 10px; }
 </style>
 </head>
 <body>
 
-<h2>🚀 GitHub Site Creator</h2>
+<div id="ui">
+<button onclick="addBlock()">Adicionar Bloco</button>
+<button onclick="toggleMode()">Modo: Jogar</button>
+</div>
 
-<input id="token" type="password" placeholder="Cole seu token (repo)">
-<input id="repo" placeholder="Nome do repositório">
-<textarea id="conteudo" rows="8" placeholder="HTML do site"></textarea>
-
-<button onclick="criar()">Criar / Atualizar Site</button>
-
-<p id="status"></p>
+<canvas id="game"></canvas>
 
 <script>
-async function criar(){
-let token=document.getElementById("token").value.trim();
-let repo=document.getElementById("repo").value.trim();
-let conteudo=document.getElementById("conteudo").value;
-let status=document.getElementById("status");
+const canvas = document.getElementById("game");
+const ctx = canvas.getContext("2d");
+canvas.width = window.innerWidth;
+canvas.height = window.innerHeight;
 
-if(!token||!repo||!conteudo){
-alert("Preencha todos os campos");
-return;
-}
+let blocks = [];
+let mode = "play";
 
-status.innerHTML="🔄 Verificando usuário...";
+let player = {
+x:100,
+y:100,
+w:40,
+h:40,
+vx:0,
+vy:0,
+speed:5,
+jump:-12,
+grounded:false
+};
 
-try{
-
-// pegar usuário
-let userRes=await fetch("https://api.github.com/user",{
-headers:{Authorization:"token "+token}
+function addBlock(){
+blocks.push({
+x:Math.random()*canvas.width,
+y:Math.random()*canvas.height,
+w:80,
+h:20
 });
-
-if(!userRes.ok){
-status.innerHTML="❌ Token inválido";
-return;
 }
 
-let userData=await userRes.json();
-let usuario=userData.login;
+function toggleMode(){
+mode = mode === "play" ? "edit" : "play";
+document.querySelector("#ui button:nth-child(2)").innerText =
+"Modo: " + (mode === "play" ? "Jogar" : "Editar");
+}
 
-// criar repo (se não existir)
-status.innerHTML="📁 Criando repositório...";
+let keys = {};
+window.addEventListener("keydown",e=>keys[e.key]=true);
+window.addEventListener("keyup",e=>keys[e.key]=false);
 
-await fetch("https://api.github.com/user/repos",{
-method:"POST",
-headers:{
-Authorization:"token "+token,
-Accept:"application/vnd.github+json"
-},
-body:JSON.stringify({
-name:repo,
-private:false
-})
+function update(){
+if(mode==="play"){
+player.vx = 0;
+if(keys["a"]) player.vx = -player.speed;
+if(keys["d"]) player.vx = player.speed;
+
+if(keys["w"] && player.grounded){
+player.vy = player.jump;
+player.grounded = false;
+}
+
+player.vy += 0.6;
+player.x += player.vx;
+player.y += player.vy;
+
+player.grounded = false;
+blocks.forEach(b=>{
+if(player.x < b.x+b.w &&
+player.x+player.w > b.x &&
+player.y < b.y+b.h &&
+player.y+player.h > b.y){
+player.y = b.y - player.h;
+player.vy = 0;
+player.grounded = true;
+}
 });
-
-// pegar SHA se já existir index
-let sha=null;
-
-let fileCheck=await fetch(
-`https://api.github.com/repos/${usuario}/${repo}/contents/index.html`,
-{headers:{Authorization:"token "+token}}
-);
-
-if(fileCheck.ok){
-let fileData=await fileCheck.json();
-sha=fileData.sha;
 }
 
-// subir index.html
-status.innerHTML="⬆️ Enviando arquivos...";
-
-await fetch(
-`https://api.github.com/repos/${usuario}/${repo}/contents/index.html`,
-{
-method:"PUT",
-headers:{
-Authorization:"token "+token,
-Accept:"application/vnd.github+json"
-},
-body:JSON.stringify({
-message:"Deploy automático",
-content:btoa(unescape(encodeURIComponent(conteudo))),
-sha:sha
-})
-}
-);
-
-// ativar pages
-status.innerHTML="🌍 Ativando GitHub Pages...";
-
-await fetch(
-`https://api.github.com/repos/${usuario}/${repo}/pages`,
-{
-method:"POST",
-headers:{
-Authorization:"token "+token,
-Accept:"application/vnd.github+json"
-},
-body:JSON.stringify({
-source:{branch:"main",path:"/"}
-})
-}
-);
-
-status.innerHTML=`
-✅ Site publicado!<br><br>
-<a style="color:#58a6ff"
-href="https://${usuario}.github.io/${repo}"
-target="_blank">
-Abrir Site
-</a>
-`;
-
-}catch(e){
-status.innerHTML="❌ Erro: "+e.message;
+draw();
+requestAnimationFrame(update);
 }
 
+function draw(){
+ctx.clearRect(0,0,canvas.width,canvas.height);
+
+ctx.fillStyle="lime";
+ctx.fillRect(player.x,player.y,player.w,player.h);
+
+ctx.fillStyle="white";
+blocks.forEach(b=>{
+ctx.fillRect(b.x,b.y,b.w,b.h);
+});
 }
+
+update();
 </script>
 
 </body>
